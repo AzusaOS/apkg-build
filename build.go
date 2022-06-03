@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"golang.org/x/sys/unix"
 	"gopkg.in/yaml.v3"
 )
 
@@ -17,6 +18,11 @@ type buildEnv struct {
 	category string // app-arch
 	name     string // zlib
 	vars     map[string]string
+
+	base    string // base path for build
+	workdir string // WORKDIR=$PKGBASE/work
+	dist    string // D=$PKGBASE/dist
+	temp    string // T=$PKGBASE/temp
 }
 
 type buildVersions struct {
@@ -88,6 +94,30 @@ func (e *buildEnv) initVars() {
 	e.category = path.Dir(e.pkg.fn) // category, eg. app-arch
 	e.name = path.Base(e.pkg.fn)    // zlib
 
+	tmpbase := "/build"
+	if err := unix.Access("/build", unix.W_OK); err != nil {
+		// can't use /build
+		home := os.Getenv("HOME")
+		if home == "" {
+			home = "/tmp"
+		}
+		tmpbase = filepath.Join(home, "tmp", "build")
+	}
+
+	e.base = filepath.Join(tmpbase, e.name+"-"+e.version)
+	e.workdir = filepath.Join(e.base, "work")
+	e.dist = filepath.Join(e.base, "dist")
+	e.temp = filepath.Join(e.base, "temp")
+
+	// cleanup
+	os.RemoveAll(e.base)
+	os.MkdirAll(e.base, 0755)
+	for _, sub := range []string{"work", "dist", "temp"} {
+		os.Mkdir(filepath.Join(e.base, sub), 0755)
+	}
+
+	log.Printf("Using %s as build directory", e.base)
+
 	e.vars = map[string]string{
 		"P":        e.name + "-" + e.version,
 		"PN":       e.name,                   // zlib
@@ -96,6 +126,9 @@ func (e *buildEnv) initVars() {
 		"PV":       e.version,
 		"PVR":      e.version, // TODO add revision (or strip from PV)
 		"PKG":      e.category + "." + e.name,
+		"WORKDIR":  e.workdir,
+		"D":        e.dist,
+		"T":        e.temp,
 	}
 }
 

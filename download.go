@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 
@@ -86,9 +87,55 @@ func (e *buildEnv) download(i *buildInstructions) error {
 		if updated {
 			e.config.Save()
 		}
+
+		// copy file to work
+		workTgt := filepath.Join(e.workdir, fn)
+		err = cloneFile(workTgt, tgt)
+		if err != nil {
+			return err
+		}
+
+		// try to extract file
+		log.Printf("attempting to extract file...")
+
+		var c *exec.Cmd
+		switch {
+		case quickMatch("*.zip", fn):
+			c = exec.Command("unzip", "-q", fn)
+		case quickMatch("*.tar.*", fn), quickMatch("*.tgz", fn), quickMatch("*.tbz2", fn):
+			c = exec.Command("tar", "xf", fn)
+		case quickMatch("*.gz", fn):
+			c = exec.Command("gunzip", fn)
+		case quickMatch("*.xz", fn):
+			c = exec.Command("xz", "-d", fn)
+		}
+
+		if c != nil {
+			// run c
+			c.Dir = e.workdir
+			c.Stdout = os.Stdout
+			c.Stderr = os.Stderr
+			e.setCmdEnv(c)
+			log.Printf("Running: %s", c)
+			err = c.Run()
+			if err != nil {
+				log.Printf("Failed: %s", err)
+			}
+		}
 	}
 
 	return nil
+}
+
+func (e *buildEnv) setCmdEnv(c *exec.Cmd) {
+	var env []string
+
+	env = append(env, "HOSTNAME=localhost", "HOME="+e.base)
+	for k, v := range e.vars {
+		env = append(env, k+"="+v)
+	}
+
+	c.Env = env
 }
 
 func doDownload(tgt string, srcurl string) error {
