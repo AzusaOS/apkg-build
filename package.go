@@ -14,6 +14,8 @@ type pkg struct {
 }
 
 func loadPackage(name string) *pkg {
+	log.Printf("Using repository found in %s", repoPath())
+
 	if strings.IndexByte(name, '/') == -1 {
 		// we only have the pkg name, let's try to find options
 		opts, err := os.ReadDir(repoPath())
@@ -76,6 +78,10 @@ func (p *pkg) readBuildConfig() (*buildConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	bc.pkgname = p.fn
+	bc.Save()
+
 	return bc, nil
 }
 
@@ -90,9 +96,11 @@ func (p *pkg) build() {
 	}
 
 	e := &buildEnv{
-		pkg:    p,
-		config: c,
+		pkg:     p,
+		config:  c,
+		version: c.Versions.Latest(),
 	}
+	e.initVars()
 
 	// let's check versions unless forced
 	err = e.build(p)

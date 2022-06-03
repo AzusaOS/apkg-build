@@ -8,6 +8,15 @@ import (
 )
 
 func repoPath() string {
+	home := os.Getenv("HOME")
+	// first check for $HOME/apkg-recipes and $HOME/projects/apkg-recipes
+	for _, sub := range []string{"apkg-recipes", "projects/apkg-recipes"} {
+		p := filepath.Join(home, sub)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+
 	// in os.UserCacheDir() or /tmp if fails
 	p := "/tmp"
 	if c, err := os.UserCacheDir(); err == nil {
