@@ -127,17 +127,6 @@ func (e *buildEnv) download(i *buildInstructions) error {
 	return nil
 }
 
-func (e *buildEnv) setCmdEnv(c *exec.Cmd) {
-	var env []string
-
-	env = append(env, "HOSTNAME=localhost", "HOME="+e.base)
-	for k, v := range e.vars {
-		env = append(env, k+"="+v)
-	}
-
-	c.Env = env
-}
-
 func doDownload(tgt string, srcurl string) error {
 	log.Printf("Attempting to download: %s", srcurl)
 	// download url to tgt

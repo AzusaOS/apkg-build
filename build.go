@@ -2,8 +2,10 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 
@@ -153,5 +155,22 @@ func (e *buildEnv) build(p *pkg) error {
 		return err
 	}
 
-	return nil
+	// ok things are downloaded, now let's see what engine we're using
+	switch i.Engine {
+	case "autoconf":
+		return e.buildAutoconf(i)
+	default:
+		return fmt.Errorf("unsupported engine: %s", i.Engine)
+	}
+}
+
+func (e *buildEnv) setCmdEnv(c *exec.Cmd) {
+	var env []string
+
+	env = append(env, "HOSTNAME=localhost", "HOME="+e.base)
+	for k, v := range e.vars {
+		env = append(env, k+"="+v)
+	}
+
+	c.Env = env
 }
