@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -15,12 +16,19 @@ import (
 )
 
 type buildEnv struct {
-	pkg      *pkg
-	config   *buildConfig
-	version  string // 1.x
-	category string // app-arch
-	name     string // zlib
-	vars     map[string]string
+	pkg       *pkg
+	os        string // "linux"
+	arch      string // "amd64"
+	config    *buildConfig
+	version   string // 1.x
+	pvr       string // 1.x-r1
+	pvrf      string // 1.x-r1.linux.amd64
+	category  string // app-arch
+	name      string // zlib
+	bits      int
+	chost     string // i686-pc-linux-gnu, x86_64-pc-linux-gnu, etc
+	libsuffix string // "64" or ""
+	vars      map[string]string
 
 	base    string // base path for build
 	workdir string // WORKDIR=$PKGBASE/work
@@ -113,6 +121,25 @@ func (e *buildEnv) initVars() {
 	e.dist = filepath.Join(e.base, "dist")
 	e.temp = filepath.Join(e.base, "temp")
 
+	e.pvr = e.version // TODO revision
+	e.pvrf = e.pvr + "." + e.os + "." + e.arch
+
+	switch e.arch {
+	case "386":
+		e.chost = "i686-pc-linux-gnu"
+		e.bits = 32
+	case "amd64":
+		e.chost = "x86_64-pc-linux-gnu"
+		e.bits = 64
+		e.libsuffix = "64"
+	case "arm64":
+		e.chost = "aarch64-unknown-linux-gnu"
+		e.bits = 64
+	default:
+		log.Printf("ERROR: unsupported arch %s", e.arch)
+		panic(fmt.Sprintf("ERROR: unsupported arch %s", e.arch))
+	}
+
 	// cleanup
 	os.RemoveAll(e.base)
 	os.MkdirAll(e.base, 0755)
@@ -128,11 +155,16 @@ func (e *buildEnv) initVars() {
 		"PF":       e.name + "-" + e.version, // pf = full (includes revision)
 		"CATEGORY": e.category,
 		"PV":       e.version,
-		"PVR":      e.version, // TODO add revision (or strip from PV)
+		"PVR":      e.pvr, // TODO add revision (or strip from PV)
+		"PVRF":     e.pvrf,
 		"PKG":      e.category + "." + e.name,
 		"WORKDIR":  e.workdir,
 		"D":        e.dist,
 		"T":        e.temp,
+		"CHOST":    e.chost,
+		"ARCH":     e.arch,
+		"OS":       e.os,
+		"BITS":     strconv.FormatInt(int64(e.bits), 10),
 	}
 }
 
@@ -169,6 +201,9 @@ func (e *buildEnv) build(p *pkg) error {
 
 	// finalize process: fixelf, organize, buildldso, archive
 	if err := e.fixElf(); err != nil {
+		return err
+	}
+	if err := e.archive(); err != nil {
 		return err
 	}
 
@@ -221,5 +256,5 @@ func (e *buildEnv) runCapture(arg0 string, args ...string) ([]byte, error) {
 
 func (e *buildEnv) getDir(name string) string {
 	// return /pkg/main/${PKG}.core.${PVRF}
-	return "/pkg/main/" + e.category + "." + e.name + "." + name + "." + e.version
+	return "/pkg/main/" + e.category + "." + e.name + "." + name + "." + e.pvrf
 }

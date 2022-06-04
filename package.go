@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -99,6 +100,8 @@ func (p *pkg) build() {
 		pkg:     p,
 		config:  c,
 		version: c.Versions.Latest(),
+		os:      runtime.GOOS,
+		arch:    runtime.GOARCH,
 	}
 	e.initVars()
 

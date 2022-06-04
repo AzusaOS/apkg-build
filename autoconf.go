@@ -35,10 +35,10 @@ func (e *buildEnv) buildAutoconf(i *buildInstructions) error {
 		// not in light mode
 		args = append(args,
 			"--sysconfdir=/etc",
-			//"--host="+e.chost,
-			//"--build="+e.chost,
+			"--host="+e.chost,
+			"--build="+e.chost,
 			"--includedir="+e.getDir("dev")+"/include",
-			"--libdir="+e.getDir("libs")+"/lib", // TODO lib_suffix
+			"--libdir="+e.getDir("libs")+"/lib"+e.libsuffix,
 			"--datarootdir="+e.getDir("core")+"/share",
 			"--mandir="+e.getDir("doc")+"/man",
 		)
