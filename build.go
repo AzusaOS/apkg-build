@@ -200,8 +200,11 @@ func (e *buildEnv) build(p *pkg) error {
 		return fmt.Errorf("unsupported engine: %s", e.i.Engine)
 	}
 
-	// finalize process: fixelf, organize, buildldso, archive
+	// finalize process: fixelf, organize, archive
 	if err := e.fixElf(); err != nil {
+		return err
+	}
+	if err := e.organize(); err != nil {
 		return err
 	}
 	if err := e.archive(); err != nil {
