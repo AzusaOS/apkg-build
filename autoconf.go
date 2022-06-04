@@ -8,12 +8,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func (e *buildEnv) buildAutoconf(i *buildInstructions) error {
+func (e *buildEnv) buildAutoconf() error {
 	// perform autoconf build
 	opts := make(map[string]bool)
 
 	// read options
-	for _, opt := range i.Options {
+	for _, opt := range e.i.Options {
 		opts[opt] = true
 	}
 

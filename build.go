@@ -17,6 +17,7 @@ import (
 
 type buildEnv struct {
 	pkg       *pkg
+	i         *buildInstructions
 	os        string // "linux"
 	arch      string // "amd64"
 	config    *buildConfig
@@ -184,7 +185,7 @@ func (e *buildEnv) build(p *pkg) error {
 	}
 	log.Printf("building version %s of %s using %s", e.version, p.fn, i.Engine)
 
-	err := e.download(i)
+	err := e.download()
 	if err != nil {
 		return err
 	}
@@ -192,7 +193,7 @@ func (e *buildEnv) build(p *pkg) error {
 	// ok things are downloaded, now let's see what engine we're using
 	switch i.Engine {
 	case "autoconf":
-		if err := e.buildAutoconf(i); err != nil {
+		if err := e.buildAutoconf(); err != nil {
 			return err
 		}
 	default:

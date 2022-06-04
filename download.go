@@ -13,10 +13,10 @@ import (
 	"mvdan.cc/sh/v3/shell"
 )
 
-func (e *buildEnv) download(i *buildInstructions) error {
+func (e *buildEnv) download() error {
 	cacheDir := "/tmp/apkg-data"
 
-	for _, u := range i.Source {
+	for _, u := range e.i.Source {
 		// TODO need to find a way to specify a different name for saved file, for example gentoo's " -> "
 		u, err := shell.Expand(u, e.getVar)
 		if err != nil {
