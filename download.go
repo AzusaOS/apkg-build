@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 
@@ -98,28 +97,37 @@ func (e *buildEnv) download(i *buildInstructions) error {
 		// try to extract file
 		log.Printf("attempting to extract file...")
 
-		var c *exec.Cmd
+		var c []string
 		switch {
 		case quickMatch("*.zip", fn):
-			c = exec.Command("unzip", "-q", fn)
+			c = []string{"unzip", "-q", fn}
 		case quickMatch("*.tar.*", fn), quickMatch("*.tgz", fn), quickMatch("*.tbz2", fn):
-			c = exec.Command("tar", "xf", fn)
+			c = []string{"tar", "xf", fn}
 		case quickMatch("*.gz", fn):
-			c = exec.Command("gunzip", fn)
+			c = []string{"gunzip", fn}
 		case quickMatch("*.xz", fn):
-			c = exec.Command("xz", "-d", fn)
+			c = []string{"xz", "-d", fn}
 		}
 
 		if c != nil {
 			// run c
-			c.Dir = e.workdir
-			c.Stdout = os.Stdout
-			c.Stderr = os.Stderr
-			e.setCmdEnv(c)
-			log.Printf("Running: %s", c)
-			err = c.Run()
+			err = e.runIn(e.workdir, c[0], c[1:]...)
 			if err != nil {
+				// do not fail if it fails
 				log.Printf("Failed: %s", err)
+			}
+
+			// detect dir name if we don't have one yet
+			if e.src == "" {
+				list, _ := os.ReadDir(e.workdir)
+				for _, f := range list {
+					if f.IsDir() {
+						// found it
+						e.src = filepath.Join(e.workdir, f.Name())
+						e.vars["S"] = e.src
+						break
+					}
+				}
 			}
 		}
 	}

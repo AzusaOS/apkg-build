@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/sys/unix"
 	"gopkg.in/yaml.v3"
@@ -25,6 +26,7 @@ type buildEnv struct {
 	workdir string // WORKDIR=$PKGBASE/work
 	dist    string // D=$PKGBASE/dist
 	temp    string // T=$PKGBASE/temp
+	src     string // S=...
 }
 
 type buildVersions struct {
@@ -158,19 +160,66 @@ func (e *buildEnv) build(p *pkg) error {
 	// ok things are downloaded, now let's see what engine we're using
 	switch i.Engine {
 	case "autoconf":
-		return e.buildAutoconf(i)
+		if err := e.buildAutoconf(i); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported engine: %s", i.Engine)
 	}
+
+	// finalize process: fixelf, organize, buildldso, archive
+	if err := e.fixElf(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (e *buildEnv) setCmdEnv(c *exec.Cmd) {
 	var env []string
 
-	env = append(env, "HOSTNAME=localhost", "HOME="+e.base)
+	env = append(env, "HOSTNAME=localhost", "HOME="+e.base, "PATH=/usr/sbin:/usr/bin:/sbin:/bin")
 	for k, v := range e.vars {
 		env = append(env, k+"="+v)
 	}
 
 	c.Env = env
+}
+
+func (e *buildEnv) run(arg0 string, args ...string) error {
+	log.Printf("build: running %s %s", arg0, strings.Join(args, " "))
+	cmd := exec.Command(arg0, args...)
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	e.setCmdEnv(cmd)
+
+	return cmd.Run()
+}
+
+func (e *buildEnv) runIn(dir string, arg0 string, args ...string) error {
+	log.Printf("build: running %s %s", arg0, strings.Join(args, " "))
+	cmd := exec.Command(arg0, args...)
+
+	cmd.Dir = dir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	e.setCmdEnv(cmd)
+
+	return cmd.Run()
+}
+
+func (e *buildEnv) runCapture(arg0 string, args ...string) ([]byte, error) {
+	log.Printf("build: running %s %s", arg0, strings.Join(args, " "))
+	cmd := exec.Command(arg0, args...)
+
+	cmd.Stderr = os.Stderr
+	e.setCmdEnv(cmd)
+
+	return cmd.Output()
+}
+
+func (e *buildEnv) getDir(name string) string {
+	// return /pkg/main/${PKG}.core.${PVRF}
+	return "/pkg/main/" + e.category + "." + e.name + "." + name + "." + e.version
 }
