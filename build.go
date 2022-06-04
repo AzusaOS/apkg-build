@@ -179,11 +179,11 @@ func (e *buildEnv) getVar(v string) string {
 
 func (e *buildEnv) build(p *pkg) error {
 	// let's just build latest version
-	i := e.config.getInstructions(e.version)
-	if i == nil {
+	e.i = e.config.getInstructions(e.version)
+	if e.i == nil {
 		return errors.New("no instructions available")
 	}
-	log.Printf("building version %s of %s using %s", e.version, p.fn, i.Engine)
+	log.Printf("building version %s of %s using %s", e.version, p.fn, e.i.Engine)
 
 	err := e.download()
 	if err != nil {
@@ -191,13 +191,13 @@ func (e *buildEnv) build(p *pkg) error {
 	}
 
 	// ok things are downloaded, now let's see what engine we're using
-	switch i.Engine {
+	switch e.i.Engine {
 	case "autoconf":
 		if err := e.buildAutoconf(); err != nil {
 			return err
 		}
 	default:
-		return fmt.Errorf("unsupported engine: %s", i.Engine)
+		return fmt.Errorf("unsupported engine: %s", e.i.Engine)
 	}
 
 	// finalize process: fixelf, organize, buildldso, archive
