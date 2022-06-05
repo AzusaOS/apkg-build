@@ -141,13 +141,6 @@ func (e *buildEnv) initVars() {
 		panic(fmt.Sprintf("ERROR: unsupported arch %s", e.arch))
 	}
 
-	// cleanup
-	os.RemoveAll(e.base)
-	os.MkdirAll(e.base, 0755)
-	for _, sub := range []string{"work", "dist", "temp"} {
-		os.Mkdir(filepath.Join(e.base, sub), 0755)
-	}
-
 	log.Printf("Using %s as build directory", e.base)
 
 	e.vars = map[string]string{
@@ -169,6 +162,23 @@ func (e *buildEnv) initVars() {
 	}
 }
 
+func (e *buildEnv) initDir() error {
+	// cleanup
+	os.RemoveAll(e.base)
+	err := os.MkdirAll(e.base, 0755)
+	if err != nil {
+		return err
+	}
+
+	for _, sub := range []string{"work", "dist", "temp"} {
+		err = os.Mkdir(filepath.Join(e.base, sub), 0755)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (e *buildEnv) getVar(v string) string {
 	r, ok := e.vars[v]
 	if ok {
@@ -184,6 +194,10 @@ func (e *buildEnv) build(p *pkg) error {
 		return errors.New("no instructions available")
 	}
 	log.Printf("building version %s of %s using %s", e.version, p.fn, e.i.Engine)
+
+	if err := e.initDir(); err != nil {
+		return err
+	}
 
 	err := e.download()
 	if err != nil {

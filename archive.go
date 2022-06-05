@@ -23,7 +23,7 @@ func (e *buildEnv) archive() error {
 
 	// TODO: scan for suid files, show warning if any
 
-	libdir := filepath.Join(e.dist, e.getDir("libs"), "lib"+e.libsuffix)
+	libdir := filepath.Join(e.dist, e.getDir("libs"))
 	buf := &bytes.Buffer{}
 
 	for _, sub := range []string{"lib64", "lib32", "lib"} {
@@ -43,7 +43,7 @@ func (e *buildEnv) archive() error {
 
 	if buf.Len() > 0 {
 		// run ldconfig
-		err := ioutil.WriteFile(filepath.Join(e.dist, e.getDir("libs"), ".ld.so.conf"), buf.Bytes(), 0755)
+		err := ioutil.WriteFile(filepath.Join(e.dist, e.getDir("libs"), ".ld.so.conf"), buf.Bytes(), 0644)
 		if err != nil {
 			return fmt.Errorf("while creating .ld.so.conf: %w", err)
 		}

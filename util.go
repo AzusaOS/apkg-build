@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func cloneFile(tgt, src string) error {
@@ -41,6 +42,7 @@ func quickMatch(pattern, f string) bool {
 func findFiles(dir string, fnList ...string) []string {
 	// find all instances of fn in dir
 	var res []string
+	dir = filepath.Clean(dir)
 
 	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		match := false
@@ -58,9 +60,30 @@ func findFiles(dir string, fnList ...string) []string {
 			// not a file
 			return nil
 		}
+		// make path relative to dir
+		if p, err := filepath.Rel(dir, path); err == nil {
+			path = p
+		} else {
+			// try more simple
+			path = strings.TrimPrefix(path, dir)
+		}
 		res = append(res, path)
 		return nil
 	})
 
 	return res
+}
+
+func trimOsArch(v string) string {
+	// we expect v to end in OS and ARCH, such as .linux.amd64 or .any.any
+	// let's simply trim twice
+	p := strings.LastIndexByte(v, '.')
+	if p != -1 {
+		v = v[:p]
+	}
+	p = strings.LastIndexByte(v, '.')
+	if p != -1 {
+		v = v[:p]
+	}
+	return v
 }
