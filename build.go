@@ -214,6 +214,10 @@ func (e *buildEnv) build(p *pkg) error {
 		if err := e.buildAutoconf(); err != nil {
 			return err
 		}
+	case "cmake":
+		if err := e.buildCmake(); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported engine: %s", e.i.Engine)
 	}
