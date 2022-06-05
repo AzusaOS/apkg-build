@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 
@@ -26,6 +27,7 @@ func (e *buildEnv) download() error {
 		fn := path.Base(u)
 		tgt := filepath.Join(cacheDir, fn)
 		cacheUrl := "https://pkg.azusa.jp/src/main/" + e.category + "/" + e.name + "/" + fn
+		needUpload := false
 
 		st, err := os.Stat(tgt)
 
@@ -34,6 +36,7 @@ func (e *buildEnv) download() error {
 			os.MkdirAll(cacheDir, 0755)
 			err = doDownload(tgt, cacheUrl)
 			if err != nil {
+				needUpload = true
 				// retry
 				err = doDownload(tgt, u)
 			}
@@ -85,6 +88,13 @@ func (e *buildEnv) download() error {
 
 		if updated {
 			e.config.Save()
+		}
+		if needUpload {
+			// upload file to the cache
+			c := exec.Command("aws", "s3", "cp", tgt, "s3://azusa-pkg/src/main/"+e.category+"/"+e.name+"/"+fn)
+			c.Stdout = os.Stdout
+			c.Stderr = os.Stderr
+			c.Run()
 		}
 
 		// copy file to work

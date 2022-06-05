@@ -179,6 +179,10 @@ func (e *buildEnv) initDir() error {
 	return nil
 }
 
+func (e *buildEnv) cleanup() error {
+	return os.RemoveAll(e.base)
+}
+
 func (e *buildEnv) getVar(v string) string {
 	r, ok := e.vars[v]
 	if ok {
@@ -224,6 +228,7 @@ func (e *buildEnv) build(p *pkg) error {
 	if err := e.archive(); err != nil {
 		return err
 	}
+	e.cleanup()
 
 	return nil
 }

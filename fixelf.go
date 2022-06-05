@@ -3,6 +3,7 @@ package main
 import (
 	"io/fs"
 	"log"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -35,7 +36,7 @@ func (e *buildEnv) fixElf() error {
 		}
 
 		// try to call fixelf --print-interpreter path
-		val, err := e.runCapture(fixelf, "--print-interpreter", path)
+		val, err := exec.Command(fixelf, "--print-interpreter", path).Output()
 		if err != nil {
 			// maybe not a dynamic executable, skip it
 			return nil
@@ -64,6 +65,6 @@ func (e *buildEnv) fixElf() error {
 			return nil
 		}
 
-		return e.run(fixelf, "--set-interpreter", changeto)
+		return e.run(fixelf, "--set-interpreter", changeto, path)
 	})
 }
