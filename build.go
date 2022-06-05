@@ -30,6 +30,7 @@ type buildEnv struct {
 	chost     string // i686-pc-linux-gnu, x86_64-pc-linux-gnu, etc
 	libsuffix string // "64" or ""
 	vars      map[string]string
+	qemu      string
 
 	base    string // base path for build
 	workdir string // WORKDIR=$PKGBASE/work
@@ -44,10 +45,13 @@ type buildVersions struct {
 }
 
 type buildInstructions struct {
-	Version string   `yaml:"version"`
-	Source  []string `yaml:"source"` // url of source (if multiple files, multiple urls)
-	Engine  string   `yaml:"engine"` // build engine
-	Options []string `yaml:"options,flow,omitempty"`
+	Version   string   `yaml:"version"`
+	Env       []string `yaml:"env,omitempty"`     // environment variables (using an array because order is important)
+	Source    []string `yaml:"source"`            // url of source (if multiple files, multiple urls)
+	Patches   []string `yaml:"patches,omitempty"` // patches to apply to source
+	Engine    string   `yaml:"engine"`            // build engine
+	Options   []string `yaml:"options,flow,omitempty"`
+	Arguments []string `yaml:"arguments,omitempty"` // extra arguments
 }
 
 type buildConfig struct {
@@ -129,13 +133,16 @@ func (e *buildEnv) initVars() {
 	case "386":
 		e.chost = "i686-pc-linux-gnu"
 		e.bits = 32
+		e.qemu = "qemu-system-x86_64"
 	case "amd64":
 		e.chost = "x86_64-pc-linux-gnu"
 		e.bits = 64
 		e.libsuffix = "64"
+		e.qemu = "qemu-system-x86_64"
 	case "arm64":
 		e.chost = "aarch64-unknown-linux-gnu"
 		e.bits = 64
+		e.qemu = "qemu-system-ppc64"
 	default:
 		log.Printf("ERROR: unsupported arch %s", e.arch)
 		panic(fmt.Sprintf("ERROR: unsupported arch %s", e.arch))
@@ -159,6 +166,7 @@ func (e *buildEnv) initVars() {
 		"ARCH":     e.arch,
 		"OS":       e.os,
 		"BITS":     strconv.FormatInt(int64(e.bits), 10),
+		"FILESDIR": filepath.Join(repoPath(), e.config.pkgname, "files"),
 	}
 }
 
@@ -203,10 +211,20 @@ func (e *buildEnv) build(p *pkg) error {
 		return err
 	}
 
+	e.applyEnv()
+
 	err := e.download()
 	if err != nil {
 		return err
 	}
+
+	err = e.applyPatches()
+	if err != nil {
+		return err
+	}
+
+	// we call applyEnv twice because in some cases we use ${S} which is defined by e.download()
+	e.applyEnv()
 
 	// ok things are downloaded, now let's see what engine we're using
 	switch e.i.Engine {

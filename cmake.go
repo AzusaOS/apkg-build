@@ -15,6 +15,12 @@ func (e *buildEnv) buildCmake() error {
 		return err
 	}
 
+	// allow override of cmakeRoot via CMAKE_ROOT
+	cmakeRoot := e.src
+	if v := e.getVar("CMAKE_ROOT"); v != "" {
+		cmakeRoot = v
+	}
+
 	cppFlags := e.getVar("CPPFLAGS")
 
 	fmt.Fprintf(f, `set(CMAKE_ASM_COMPILE_OBJECT "<CMAKE_ASM_COMPILER> <DEFINES> <INCLUDES> %s <FLAGS> -o <OBJECT> -c <SOURCE>" CACHE STRING "ASM compile command" FORCE)`+"\n", cppFlags)
@@ -48,7 +54,7 @@ func (e *buildEnv) buildCmake() error {
 
 	cmakeOpts := []string{
 		"cmake",
-		e.src,
+		cmakeRoot,
 		"-C", commonConfig,
 		"-G", "Ninja", "-Wno-dev",
 		"-DCMAKE_INSTALL_PREFIX=" + e.getDir("core"),

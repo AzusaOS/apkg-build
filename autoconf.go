@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"golang.org/x/sys/unix"
+	"mvdan.cc/sh/v3/shell"
 )
 
 func (e *buildEnv) buildAutoconf() error {
@@ -50,9 +51,18 @@ func (e *buildEnv) buildAutoconf() error {
 		}
 	}
 
+	var err error
+	for _, arg := range e.i.Arguments {
+		arg, err = shell.Expand(arg, e.getVar)
+		if err != nil {
+			return err
+		}
+		args = append(args, arg)
+	}
+
 	buildDir := e.temp
 
-	err := e.runIn(buildDir, args[0], args[1:]...)
+	err = e.runIn(buildDir, args[0], args[1:]...)
 	if err != nil {
 		return err
 	}
