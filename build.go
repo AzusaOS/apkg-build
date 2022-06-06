@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"os"
@@ -262,7 +264,7 @@ func (e *buildEnv) build(p *pkg) error {
 	return nil
 }
 
-func (e *buildEnv) setCmdEnv(c *exec.Cmd) {
+func (e *buildEnv) fullEnv() []string {
 	var env []string
 
 	env = append(env, "HOSTNAME=localhost", "HOME="+e.base, "PATH=/usr/sbin:/usr/bin:/sbin:/bin")
@@ -270,12 +272,20 @@ func (e *buildEnv) setCmdEnv(c *exec.Cmd) {
 		env = append(env, k+"="+v)
 	}
 
-	c.Env = env
+	return env
 }
 
-func (e *buildEnv) run(arg0 string, args ...string) error {
-	log.Printf("build: running %s %s", arg0, strings.Join(args, " "))
-	cmd := exec.Command(arg0, args...)
+func (e *buildEnv) setCmdEnv(c *exec.Cmd) {
+	c.Env = e.fullEnv()
+}
+
+func (e *buildEnv) run(args ...string) error {
+	log.Printf("build: running %s", strings.Join(args, " "))
+
+	if e.qemu != nil {
+		return e.qemu.runEnv("/", args, e.fullEnv(), nil, nil)
+	}
+	cmd := exec.Command(args[0], args[1:]...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -284,9 +294,14 @@ func (e *buildEnv) run(arg0 string, args ...string) error {
 	return cmd.Run()
 }
 
-func (e *buildEnv) runIn(dir string, arg0 string, args ...string) error {
-	log.Printf("build: running %s %s", arg0, strings.Join(args, " "))
-	cmd := exec.Command(arg0, args...)
+func (e *buildEnv) runIn(dir string, args ...string) error {
+	log.Printf("build: running %s", strings.Join(args, " "))
+
+	if e.qemu != nil {
+		return e.qemu.runEnv(dir, args, e.fullEnv(), nil, nil)
+	}
+
+	cmd := exec.Command(args[0], args[1:]...)
 
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
@@ -296,11 +311,38 @@ func (e *buildEnv) runIn(dir string, arg0 string, args ...string) error {
 	return cmd.Run()
 }
 
-func (e *buildEnv) runCapture(arg0 string, args ...string) ([]byte, error) {
-	log.Printf("build: running %s %s", arg0, strings.Join(args, " "))
-	cmd := exec.Command(arg0, args...)
+func (e *buildEnv) runCapture(args ...string) ([]byte, error) {
+	log.Printf("build: running %s", strings.Join(args, " "))
+
+	if e.qemu != nil {
+		buf := &bytes.Buffer{}
+		err := e.qemu.runEnv("/", args, e.fullEnv(), buf, nil)
+		if err != nil {
+			return nil, err
+		}
+		return buf.Bytes(), nil
+	}
+
+	cmd := exec.Command(args[0], args[1:]...)
 
 	cmd.Stderr = os.Stderr
+	e.setCmdEnv(cmd)
+
+	return cmd.Output()
+}
+
+func (e *buildEnv) runCaptureSilent(args ...string) ([]byte, error) {
+	if e.qemu != nil {
+		buf := &bytes.Buffer{}
+		err := e.qemu.runEnv("/", args, e.fullEnv(), buf, io.Discard)
+		if err != nil {
+			return nil, err
+		}
+		return buf.Bytes(), nil
+	}
+
+	cmd := exec.Command(args[0], args[1:]...)
+
 	e.setCmdEnv(cmd)
 
 	return cmd.Output()
@@ -312,9 +354,145 @@ func (e *buildEnv) getDir(name string) string {
 }
 
 func (e *buildEnv) MkdirAll(dir string, mode fs.FileMode) error {
+	if e.qemu != nil {
+		return e.qemu.sftp.MkdirAll(dir)
+	}
 	return os.MkdirAll(dir, mode)
 }
 
 func (e *buildEnv) Mkdir(dir string, mode fs.FileMode) error {
+	if e.qemu != nil {
+		return e.qemu.sftp.Mkdir(dir)
+	}
 	return os.Mkdir(dir, mode)
+}
+
+func (e *buildEnv) cloneFile(tgt, src string) error {
+	if e.qemu != nil {
+		// need to create file via sftp
+		in, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+		out, err := e.qemu.sftp.Create(tgt)
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+		_, err = io.Copy(out, in)
+		if err != nil {
+			return err
+		}
+		if st, err := in.Stat(); err == nil {
+			// chmod
+			out.Chmod(st.Mode())
+		}
+		return nil
+	}
+	return cloneFile(tgt, src)
+}
+
+func (e *buildEnv) Stat(p string) (os.FileInfo, error) {
+	if e.qemu != nil {
+		return e.qemu.sftp.Stat(p)
+	}
+	return os.Stat(p)
+}
+
+func (e *buildEnv) ReadDir(p string) ([]os.FileInfo, error) {
+	if e.qemu != nil {
+		return e.qemu.sftp.ReadDir(p)
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.Readdir(0)
+}
+
+func (e *buildEnv) Rename(oldname, newname string) error {
+	if e.qemu != nil {
+		return e.qemu.sftp.PosixRename(oldname, newname)
+	}
+
+	return os.Rename(oldname, newname)
+}
+
+func (e *buildEnv) Remove(f string) error {
+	if e.qemu != nil {
+		return e.qemu.sftp.Remove(f)
+	}
+	return os.Remove(f)
+}
+
+func (e *buildEnv) Symlink(oldname, newname string) error {
+	if e.qemu != nil {
+		return e.qemu.sftp.Symlink(oldname, newname)
+	}
+	return os.Symlink(oldname, newname)
+}
+
+func (e *buildEnv) findFiles(dir string, fnList ...string) []string {
+	if e.qemu != nil {
+		cmd := []string{"find", dir}
+
+		for i, fn := range fnList {
+			if i == 0 {
+				cmd = append(cmd, "-name", fn)
+			} else {
+				cmd = append(cmd, "-o", "-name", fn)
+			}
+		}
+		cmd = append(cmd, "-print0")
+
+		res, err := e.runCapture(cmd...)
+		if err != nil {
+			return nil
+		}
+		vs := bytes.Split(res, []byte{0})
+		final := make([]string, len(vs))
+		for i, a := range vs {
+			final[i] = string(a)
+		}
+		return final
+	}
+	return findFiles(dir, fnList...)
+}
+
+func (e *buildEnv) WalkDir(root string, fn fs.WalkDirFunc) error {
+	if e.qemu != nil {
+		walk := e.qemu.sftp.Walk(root)
+		for walk.Step() {
+			if err := walk.Err(); err != nil {
+				return err
+			}
+			p := walk.Path()
+			// func(path string, d fs.DirEntry, err error) error
+			// stat it
+			st, err := e.qemu.sftp.Stat(p)
+			if err != nil {
+				return err
+			}
+			err = fn(p, statThing{st}, nil)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return filepath.WalkDir(root, fn)
+}
+
+type statThing struct {
+	os.FileInfo
+}
+
+func (s statThing) Info() (os.FileInfo, error) {
+	return s.FileInfo, nil
+}
+
+func (s statThing) Type() fs.FileMode {
+	return s.Mode().Type()
 }

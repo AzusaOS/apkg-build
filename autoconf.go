@@ -5,7 +5,6 @@ import (
 	"log"
 	"path/filepath"
 
-	"golang.org/x/sys/unix"
 	"mvdan.cc/sh/v3/shell"
 )
 
@@ -62,7 +61,7 @@ func (e *buildEnv) buildAutoconf() error {
 
 	buildDir := e.temp
 
-	err = e.runIn(buildDir, args[0], args[1:]...)
+	err = e.runIn(buildDir, args...)
 	if err != nil {
 		return err
 	}
@@ -89,7 +88,7 @@ func (e *buildEnv) findConfigure() string {
 	}
 
 	t := filepath.Join(e.src, "configure")
-	if err := unix.Access(t, unix.X_OK); err == nil {
+	if st, err := e.Stat(t); err == nil && st.Mode()&1 == 1 {
 		return t
 	}
 

@@ -66,7 +66,7 @@ func (e *buildEnv) buildCmake() error {
 		"-DCMAKE_CXX_FLAGS=" + cppFlags,
 	}
 
-	err = e.runIn(e.temp, cmakeOpts[0], cmakeOpts[1:]...)
+	err = e.runIn(e.temp, cmakeOpts...)
 	if err != nil {
 		return err
 	}

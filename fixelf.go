@@ -3,8 +3,6 @@ package main
 import (
 	"io/fs"
 	"log"
-	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -20,7 +18,7 @@ func (e *buildEnv) fixElf() error {
 
 	log.Printf("Running fixelf...")
 
-	return filepath.WalkDir(e.dist, func(path string, d fs.DirEntry, err error) error {
+	return e.WalkDir(e.dist, func(path string, d fs.DirEntry, err error) error {
 		if !d.Type().IsRegular() {
 			// not a regular file → ignore
 			return nil
@@ -36,7 +34,7 @@ func (e *buildEnv) fixElf() error {
 		}
 
 		// try to call fixelf --print-interpreter path
-		val, err := exec.Command(fixelf, "--print-interpreter", path).Output()
+		val, err := e.runCaptureSilent(fixelf, "--print-interpreter", path)
 		if err != nil {
 			// maybe not a dynamic executable, skip it
 			return nil

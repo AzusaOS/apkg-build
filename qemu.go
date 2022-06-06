@@ -183,6 +183,42 @@ func (e *buildEnv) initQemu() error {
 	return nil
 }
 
+func (q *qemu) runEnv(dir string, args []string, env []string, stdout, stderr io.Writer) error {
+	sess, err := q.ssh.NewSession()
+	if err != nil {
+		return err
+	}
+	defer sess.Close()
+
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	if stderr == nil {
+		stderr = os.Stderr
+	}
+
+	// copy env
+	for _, e := range env {
+		p := strings.IndexByte(e, '=')
+		if p != -1 {
+			sess.Setenv(e[:p], e[p+1:])
+		}
+	}
+
+	pipeout, err := sess.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	pipeerr, err := sess.StderrPipe()
+	if err != nil {
+		return err
+	}
+	go io.Copy(stdout, pipeout)
+	go io.Copy(stderr, pipeerr)
+
+	return sess.Run(shellQuoteCmd("cd", dir) + ";" + shellQuoteCmd(args...))
+}
+
 func (q *qemu) run(args ...string) error {
 	sess, err := q.ssh.NewSession()
 	if err != nil {
@@ -201,6 +237,10 @@ func (q *qemu) run(args ...string) error {
 	go io.Copy(os.Stdout, stdout)
 	go io.Copy(os.Stderr, stderr)
 
+	return sess.Run(shellQuoteCmd(args...))
+}
+
+func shellQuoteCmd(args ...string) string {
 	cmd := &bytes.Buffer{}
 	for _, arg := range args {
 		if cmd.Len() > 0 {
@@ -208,8 +248,7 @@ func (q *qemu) run(args ...string) error {
 		}
 		cmd.WriteString(shellQuote(arg))
 	}
-
-	return sess.Run(cmd.String())
+	return cmd.String()
 }
 
 func shellQuote(s string) string {

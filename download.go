@@ -99,7 +99,7 @@ func (e *buildEnv) download() error {
 
 		// copy file to work
 		workTgt := filepath.Join(e.workdir, fn)
-		err = cloneFile(workTgt, tgt)
+		err = e.cloneFile(workTgt, tgt)
 		if err != nil {
 			return err
 		}
@@ -121,7 +121,7 @@ func (e *buildEnv) download() error {
 
 		if c != nil {
 			// run c
-			err = e.runIn(e.workdir, c[0], c[1:]...)
+			err = e.runIn(e.workdir, c...)
 			if err != nil {
 				// do not fail if it fails
 				log.Printf("Failed: %s", err)
@@ -129,7 +129,7 @@ func (e *buildEnv) download() error {
 
 			// detect dir name if we don't have one yet
 			if e.src == "" {
-				list, _ := os.ReadDir(e.workdir)
+				list, _ := e.ReadDir(e.workdir)
 				for _, f := range list {
 					if f.IsDir() {
 						// found it

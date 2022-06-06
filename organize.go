@@ -40,7 +40,7 @@ func (e *buildEnv) orgMoveLib() error {
 	log.Printf("Fixing libs...")
 	// remove any .la file
 	// see: https://wiki.gentoo.org/wiki/Project:Quality_Assurance/Handling_Libtool_Archives
-	for _, p := range findFiles(e.dist, "*.la") {
+	for _, p := range e.findFiles(e.dist, "*.la") {
 		log.Printf("remove: $D/%s", p)
 		os.Remove(filepath.Join(e.dist, p))
 	}
@@ -121,9 +121,9 @@ func (e *buildEnv) orgFixDev() error {
 	}
 	if st, err := os.Stat(filepath.Join(e.dist, e.getDir("libs"), "lib"+e.libsuffix)); err == nil && st.IsDir() {
 		// locate any .a files
-		list := findFiles(filepath.Join(e.dist, e.getDir("libs"), "lib"+e.libsuffix), "*.a")
+		list := e.findFiles(filepath.Join(e.dist, e.getDir("libs"), "lib"+e.libsuffix), "*.a")
 		if len(list) > 0 {
-			os.MkdirAll(filepath.Join(e.dist, e.getDir("dev"), "lib"+e.libsuffix), 0755)
+			e.MkdirAll(filepath.Join(e.dist, e.getDir("dev"), "lib"+e.libsuffix), 0755)
 			for _, f := range list {
 				// need to move f to dev
 				err = e.moveAndLinkFile(filepath.Join(e.getDir("libs"), "lib"+e.libsuffix, f), filepath.Join(e.getDir("dev"), "lib"+e.libsuffix, f))
@@ -247,46 +247,46 @@ func (e *buildEnv) orgFixPython() error {
 func (e *buildEnv) moveAndLinkDir(src, dst string) error {
 	log.Printf("Move & link %s to %s", src, dst)
 	// src & dst start with "/pkg/main" - need to prepend e.dist if using
-	if _, err := os.Stat(filepath.Join(e.dist, dst)); err != nil {
-		err = os.MkdirAll(filepath.Join(e.dist, dst), 0755)
+	if _, err := e.Stat(filepath.Join(e.dist, dst)); err != nil {
+		err = e.MkdirAll(filepath.Join(e.dist, dst), 0755)
 		if err != nil {
 			return err
 		}
 	}
-	list, err := os.ReadDir(filepath.Join(e.dist, src))
+	list, err := e.ReadDir(filepath.Join(e.dist, src))
 	if err != nil {
 		return err
 	}
 	for _, fi := range list {
 		nam := fi.Name()
-		err = os.Rename(filepath.Join(e.dist, src, nam), filepath.Join(e.dist, dst, nam))
+		err = e.Rename(filepath.Join(e.dist, src, nam), filepath.Join(e.dist, dst, nam))
 		if err != nil {
 			return err
 		}
 	}
 	// remove dir
-	err = os.Remove(filepath.Join(e.dist, src))
+	err = e.Remove(filepath.Join(e.dist, src))
 	if err != nil {
 		return err
 	}
 	// symlink to dst
-	return os.Symlink(dst, filepath.Join(e.dist, src))
+	return e.Symlink(dst, filepath.Join(e.dist, src))
 }
 
 func (e *buildEnv) moveAndLinkFile(src, dst string) error {
 	log.Printf("Move & link %s to %s", src, dst)
 	dstdir := filepath.Dir(dst)
 	// src & dst start with "/pkg/main" - need to prepend e.dist if using
-	if _, err := os.Stat(filepath.Join(e.dist, dstdir)); err != nil {
-		err = os.MkdirAll(filepath.Join(e.dist, dstdir), 0755)
+	if _, err := e.Stat(filepath.Join(e.dist, dstdir)); err != nil {
+		err = e.MkdirAll(filepath.Join(e.dist, dstdir), 0755)
 		if err != nil {
 			return err
 		}
 	}
-	err := os.Rename(filepath.Join(e.dist, src), filepath.Join(e.dist, dst))
+	err := e.Rename(filepath.Join(e.dist, src), filepath.Join(e.dist, dst))
 	if err != nil {
 		return err
 	}
 	// symlink to dst
-	return os.Symlink(dst, filepath.Join(e.dist, src))
+	return e.Symlink(dst, filepath.Join(e.dist, src))
 }
