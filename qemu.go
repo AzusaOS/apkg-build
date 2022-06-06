@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -12,11 +13,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
 type qemu struct {
 	cmd  *exec.Cmd
+	ssh  *ssh.Client
+	sftp *sftp.Client
 	port int
 }
 
@@ -78,6 +82,10 @@ func (e *buildEnv) initQemu() error {
 			return err
 		}
 
+		// cleanup (TODO use a temp subdir for that)
+		os.Remove("/tmp/init")
+		os.RemoveAll("/tmp/usr")
+
 		// compress
 		c = exec.Command("xz", "-v", "--check=crc32", "--x86", "--lzma2", "--stdout", cpio)
 		out, err := os.Create(initrd)
@@ -91,14 +99,26 @@ func (e *buildEnv) initQemu() error {
 		if err != nil {
 			return err
 		}
+
+		os.Remove(cpio)
+	}
+
+	qemuExe := ""
+	switch e.arch {
+	case "amd64":
+		qemuExe = "qemu-system-x86_64"
+	case "386":
+		qemuExe = "qemu-system-x86_64"
+	default:
+		return fmt.Errorf("qemu arch not supported: %s", e.arch)
 	}
 
 	// choose a random port
 	port := rand.Intn(10000) + 10000
-	log.Printf("qemu: using qemu %s port %d for SSH", e.qemu, port)
+	log.Printf("qemu: using qemu %s port %d for SSH", qemuExe, port)
 
 	c := exec.Command(
-		"/pkg/main/app-emulation.qemu.core/bin/"+e.qemu,
+		"/pkg/main/app-emulation.qemu.core/bin/"+qemuExe,
 		"-kernel", "/pkg/main/sys-kernel.linux.core."+kver+"/linux-"+kver+".img",
 		"-initrd", initrd,
 		//"-append", "console=ttyS0",
@@ -142,12 +162,62 @@ func (e *buildEnv) initQemu() error {
 		return err
 	}
 	res, err := sess.Output("uname -a")
+	sess.Close()
 	if err != nil {
 		return err
 	}
 	log.Printf("qemu: ready, running %s", bytes.TrimSpace(res))
 
+	ftp, err := sftp.NewClient(sshc)
+	if err != nil {
+		return err
+	}
+
+	e.qemu = &qemu{
+		cmd:  c,
+		ssh:  sshc,
+		sftp: ftp,
+		port: port,
+	}
+
 	return nil
+}
+
+func (q *qemu) run(args ...string) error {
+	sess, err := q.ssh.NewSession()
+	if err != nil {
+		return err
+	}
+	defer sess.Close()
+
+	stdout, err := sess.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := sess.StderrPipe()
+	if err != nil {
+		return err
+	}
+	go io.Copy(os.Stdout, stdout)
+	go io.Copy(os.Stderr, stderr)
+
+	cmd := &bytes.Buffer{}
+	for _, arg := range args {
+		if cmd.Len() > 0 {
+			cmd.WriteByte(' ')
+		}
+		cmd.WriteString(shellQuote(arg))
+	}
+
+	return sess.Run(cmd.String())
+}
+
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }
 
 const initData = `#!/usr/azusa/busybox ash
@@ -207,6 +277,9 @@ ln -snf /pkg/main/azusa.symlinks.core.linux.amd64/sbin /sbin
 hash -r
 export PATH=/sbin:/bin
 
+mkdir -p /usr/libexec
+ln -snf /pkg/main/net-misc.openssh.core/libexec/sftp-server /usr/libexec
+
 /bin/find /pkg/main/azusa.baselayout.core/ '(' -type f -o -type l ')' -printf '%P\n' | while read foo; do
 	if [ ! -f "$foo" ]; then
 		foo_dir="$(dirname "$foo")"
@@ -217,6 +290,8 @@ export PATH=/sbin:/bin
 		cp -a "/pkg/main/azusa.baselayout.core/$foo" "$BASE/$foo"
 	fi
 done
+
+dbus-uuidgen --ensure=/etc/machine-id
 
 # set root password to empty
 sed -i 's/root:\*:/root::/' /etc/shadow

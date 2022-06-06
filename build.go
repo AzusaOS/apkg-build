@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -30,7 +31,7 @@ type buildEnv struct {
 	chost     string // i686-pc-linux-gnu, x86_64-pc-linux-gnu, etc
 	libsuffix string // "64" or ""
 	vars      map[string]string
-	qemu      string
+	qemu      *qemu
 
 	base    string // base path for build
 	workdir string // WORKDIR=$PKGBASE/work
@@ -107,18 +108,25 @@ func (bv *buildConfig) Save() error {
 	return os.Rename(tgt+"~", tgt)
 }
 
-func (e *buildEnv) initVars() {
+func (e *buildEnv) initVars() error {
 	e.category = path.Dir(e.pkg.fn) // category, eg. app-arch
 	e.name = path.Base(e.pkg.fn)    // zlib
 
+	err := e.initQemu()
+	if err != nil {
+		log.Printf("WARNING: failed to init qemu: %s (will build locally)", err)
+	}
+
 	tmpbase := "/build"
-	if err := unix.Access("/build", unix.W_OK); err != nil {
-		// can't use /build
-		home := os.Getenv("HOME")
-		if home == "" {
-			home = "/tmp"
+	if e.qemu == nil {
+		if err := unix.Access("/build", unix.W_OK); err != nil {
+			// can't use /build
+			home := os.Getenv("HOME")
+			if home == "" {
+				home = "/tmp"
+			}
+			tmpbase = filepath.Join(home, "tmp", "build")
 		}
-		tmpbase = filepath.Join(home, "tmp", "build")
 	}
 
 	e.base = filepath.Join(tmpbase, e.name+"-"+e.version)
@@ -133,16 +141,13 @@ func (e *buildEnv) initVars() {
 	case "386":
 		e.chost = "i686-pc-linux-gnu"
 		e.bits = 32
-		e.qemu = "qemu-system-x86_64"
 	case "amd64":
 		e.chost = "x86_64-pc-linux-gnu"
 		e.bits = 64
 		e.libsuffix = "64"
-		e.qemu = "qemu-system-x86_64"
 	case "arm64":
 		e.chost = "aarch64-unknown-linux-gnu"
 		e.bits = 64
-		e.qemu = "qemu-system-ppc64"
 	default:
 		log.Printf("ERROR: unsupported arch %s", e.arch)
 		panic(fmt.Sprintf("ERROR: unsupported arch %s", e.arch))
@@ -168,18 +173,20 @@ func (e *buildEnv) initVars() {
 		"BITS":     strconv.FormatInt(int64(e.bits), 10),
 		"FILESDIR": filepath.Join(repoPath(), e.config.pkgname, "files"),
 	}
+
+	return nil
 }
 
 func (e *buildEnv) initDir() error {
 	// cleanup
 	os.RemoveAll(e.base)
-	err := os.MkdirAll(e.base, 0755)
+	err := e.MkdirAll(e.base, 0755)
 	if err != nil {
 		return err
 	}
 
 	for _, sub := range []string{"work", "dist", "temp"} {
-		err = os.Mkdir(filepath.Join(e.base, sub), 0755)
+		err = e.Mkdir(filepath.Join(e.base, sub), 0755)
 		if err != nil {
 			return err
 		}
@@ -212,12 +219,8 @@ func (e *buildEnv) build(p *pkg) error {
 	}
 
 	e.applyEnv()
-	err := e.initQemu()
-	if err != nil {
-		return err
-	}
 
-	err = e.download()
+	err := e.download()
 	if err != nil {
 		return err
 	}
@@ -306,4 +309,12 @@ func (e *buildEnv) runCapture(arg0 string, args ...string) ([]byte, error) {
 func (e *buildEnv) getDir(name string) string {
 	// return /pkg/main/${PKG}.core.${PVRF}
 	return "/pkg/main/" + e.category + "." + e.name + "." + name + "." + e.pvrf
+}
+
+func (e *buildEnv) MkdirAll(dir string, mode fs.FileMode) error {
+	return os.MkdirAll(dir, mode)
+}
+
+func (e *buildEnv) Mkdir(dir string, mode fs.FileMode) error {
+	return os.Mkdir(dir, mode)
 }
