@@ -212,8 +212,12 @@ func (e *buildEnv) build(p *pkg) error {
 	}
 
 	e.applyEnv()
+	err := e.initQemu()
+	if err != nil {
+		return err
+	}
 
-	err := e.download()
+	err = e.download()
 	if err != nil {
 		return err
 	}

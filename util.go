@@ -31,6 +31,11 @@ func cloneFile(tgt, src string) error {
 	if err != nil {
 		return err
 	}
+
+	if st, err := f.Stat(); err == nil {
+		os.Chmod(tgt, st.Mode())
+	}
+
 	return nil
 }
 
