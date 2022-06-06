@@ -51,6 +51,7 @@ type buildVersions struct {
 type buildInstructions struct {
 	Version   string   `yaml:"version"`
 	Env       []string `yaml:"env,omitempty"`     // environment variables (using an array because order is important)
+	Import    []string `yaml:"import,omitempty"`  // list of imports
 	Source    []string `yaml:"source"`            // url of source (if multiple files, multiple urls)
 	Patches   []string `yaml:"patches,omitempty"` // patches to apply to source
 	Engine    string   `yaml:"engine"`            // build engine
@@ -175,6 +176,10 @@ func (e *buildEnv) initVars() error {
 		"OS":       e.os,
 		"BITS":     strconv.FormatInt(int64(e.bits), 10),
 		"FILESDIR": filepath.Join(repoPath(), e.config.pkgname, "files"),
+
+		// default stuff
+		"PKG_CONFIG_LIBDIR": "/pkg/main/azusa.symlinks.core/pkgconfig",
+		"XDG_DATA_DIRS":     "/usr/share",
 	}
 
 	return nil
@@ -212,6 +217,15 @@ func (e *buildEnv) getVar(v string) string {
 	return ""
 }
 
+func (e *buildEnv) appendVar(k, val, glue string) {
+	r, ok := e.vars[k]
+	if !ok {
+		e.vars[k] = val
+	} else {
+		e.vars[k] = r + glue + val
+	}
+}
+
 func (e *buildEnv) build(p *pkg) error {
 	// let's just build latest version
 	e.i = e.config.getInstructions(e.version)
@@ -238,6 +252,11 @@ func (e *buildEnv) build(p *pkg) error {
 
 	// we call applyEnv twice because in some cases we use ${S} which is defined by e.download()
 	e.applyEnv()
+
+	err = e.doImport()
+	if err != nil {
+		return err
+	}
 
 	// ok things are downloaded, now let's see what engine we're using
 	switch e.i.Engine {

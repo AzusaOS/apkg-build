@@ -198,12 +198,17 @@ func (q *qemu) runEnv(dir string, args []string, env []string, stdout, stderr io
 	}
 
 	// copy env
-	for _, e := range env {
-		p := strings.IndexByte(e, '=')
-		if p != -1 {
-			sess.Setenv(e[:p], e[p+1:])
-		}
-	}
+	// looks like setenv doesn't work with dropbear
+	/*
+		for _, e := range env {
+			p := strings.IndexByte(e, '=')
+			if p != -1 {
+				err = sess.Setenv(e[:p], e[p+1:])
+				if err != nil {
+					log.Printf("error: %s", err)
+				}
+			}
+		}*/
 
 	pipeout, err := sess.StdoutPipe()
 	if err != nil {
@@ -216,7 +221,7 @@ func (q *qemu) runEnv(dir string, args []string, env []string, stdout, stderr io
 	go io.Copy(stdout, pipeout)
 	go io.Copy(stderr, pipeerr)
 
-	return sess.Run(shellQuoteCmd("cd", dir) + ";" + shellQuoteCmd(args...))
+	return sess.Run(shellQuoteCmd("cd", dir) + ";" + shellQuoteEnv(env...) + shellQuoteCmd(args...))
 }
 
 func (q *qemu) run(args ...string) error {
@@ -266,6 +271,19 @@ func (q *qemu) fetchFile(remote, local string) error {
 		out.Chmod(st.Mode())
 	}
 	return nil
+}
+
+func shellQuoteEnv(env ...string) string {
+	cmd := &bytes.Buffer{}
+	for _, arg := range env {
+		p := strings.IndexByte(arg, '=')
+		if p == -1 {
+			continue
+		}
+		cmd.WriteString(arg[:p+1] + shellQuote(arg[p+1:]))
+		cmd.WriteByte(' ')
+	}
+	return cmd.String()
 }
 
 func shellQuoteCmd(args ...string) string {

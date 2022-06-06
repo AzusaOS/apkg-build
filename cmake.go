@@ -75,7 +75,9 @@ func (e *buildEnv) buildCmake() error {
 		return err
 	}
 
+	// let cmake know of our DESTDIR
 	e.vars["DESTDIR"] = e.dist
+
 	err = e.runIn(e.temp, "ninja", "install")
 	if err != nil {
 		return err
