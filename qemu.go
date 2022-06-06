@@ -240,6 +240,34 @@ func (q *qemu) run(args ...string) error {
 	return sess.Run(shellQuoteCmd(args...))
 }
 
+func (q *qemu) off() error {
+	return q.run("/pkg/main/sys-apps.busybox.core/bin/busybox", "poweroff", "-f")
+}
+
+func (q *qemu) fetchFile(remote, local string) error {
+	log.Printf("qemu: copying %s to local %s", remote, local)
+	in, err := q.sftp.Open(remote)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(local)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	if err != nil {
+		return err
+	}
+
+	if st, err := in.Stat(); err == nil {
+		out.Chmod(st.Mode())
+	}
+	return nil
+}
+
 func shellQuoteCmd(args ...string) string {
 	cmd := &bytes.Buffer{}
 	for _, arg := range args {
@@ -313,6 +341,11 @@ done
 rm -fr /bin /sbin
 ln -snf /pkg/main/azusa.symlinks.core.linux.amd64/bin /bin
 ln -snf /pkg/main/azusa.symlinks.core.linux.amd64/sbin /sbin
+ln -snf /pkg/main/azusa.symlinks.core.linux.amd64/lib /lib
+ln -snf /pkg/main/azusa.symlinks.core.linux.amd64/lib32 /lib32
+ln -snf /pkg/main/azusa.symlinks.core.linux.amd64/lib64 /lib64
+
+
 hash -r
 export PATH=/sbin:/bin
 

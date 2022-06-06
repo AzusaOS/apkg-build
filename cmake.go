@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 )
 
@@ -10,7 +9,7 @@ func (e *buildEnv) buildCmake() error {
 	// build custom rules (gentoo inspired)
 	buildRules := filepath.Join(e.base, "azusa_rules.cmake")
 
-	f, err := os.Create(buildRules)
+	f, err := e.Create(buildRules)
 	if err != nil {
 		return err
 	}
@@ -33,7 +32,7 @@ func (e *buildEnv) buildCmake() error {
 
 	commonConfig := filepath.Join(e.base, "azusa_common_config.cmake")
 
-	f, err = os.Create(commonConfig)
+	f, err = e.Create(commonConfig)
 	if err != nil {
 		return err
 	}

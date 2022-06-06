@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -181,7 +182,7 @@ func (e *buildEnv) initVars() error {
 
 func (e *buildEnv) initDir() error {
 	// cleanup
-	os.RemoveAll(e.base)
+	e.RemoveAll(e.base)
 	err := e.MkdirAll(e.base, 0755)
 	if err != nil {
 		return err
@@ -197,7 +198,10 @@ func (e *buildEnv) initDir() error {
 }
 
 func (e *buildEnv) cleanup() error {
-	return os.RemoveAll(e.base)
+	if e.qemu != nil {
+		return e.qemu.off()
+	}
+	return e.RemoveAll(e.base)
 }
 
 func (e *buildEnv) getVar(v string) string {
@@ -393,6 +397,25 @@ func (e *buildEnv) cloneFile(tgt, src string) error {
 	return cloneFile(tgt, src)
 }
 
+func (e *buildEnv) WriteFile(filename string, data []byte, perm fs.FileMode) error {
+	if e.qemu != nil {
+		f, err := e.qemu.sftp.Create(filename)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		f.Chmod(perm)
+
+		_, err = f.Write(data)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	return ioutil.WriteFile(filename, data, perm)
+}
+
 func (e *buildEnv) Stat(p string) (os.FileInfo, error) {
 	if e.qemu != nil {
 		return e.qemu.sftp.Stat(p)
@@ -441,6 +464,13 @@ func (e *buildEnv) Remove(f string) error {
 	return os.Remove(f)
 }
 
+func (e *buildEnv) RemoveAll(path string) error {
+	if e.qemu != nil {
+		return e.run("rm", "-fr", path)
+	}
+	return os.RemoveAll(path)
+}
+
 func (e *buildEnv) Symlink(oldname, newname string) error {
 	if e.qemu != nil {
 		return e.qemu.sftp.Symlink(oldname, newname)
@@ -448,9 +478,18 @@ func (e *buildEnv) Symlink(oldname, newname string) error {
 	return os.Symlink(oldname, newname)
 }
 
+func (e *buildEnv) Create(f string) (io.WriteCloser, error) {
+	if e.qemu != nil {
+		return e.qemu.sftp.Create(f)
+	}
+	return os.Create(f)
+}
+
 func (e *buildEnv) findFiles(dir string, fnList ...string) []string {
 	if e.qemu != nil {
-		cmd := []string{"find", dir}
+		dir = filepath.Clean(dir)
+
+		cmd := []string{"find", dir, "-type", "f", "("}
 
 		for i, fn := range fnList {
 			if i == 0 {
@@ -459,16 +498,30 @@ func (e *buildEnv) findFiles(dir string, fnList ...string) []string {
 				cmd = append(cmd, "-o", "-name", fn)
 			}
 		}
-		cmd = append(cmd, "-print0")
+		cmd = append(cmd, ")", "-print0")
 
 		res, err := e.runCapture(cmd...)
 		if err != nil {
 			return nil
 		}
 		vs := bytes.Split(res, []byte{0})
+		// typically, last vs should be empty
+		if len(vs[len(vs)-1]) == 0 {
+			vs = vs[:len(vs)-1]
+		}
+		if len(vs) == 0 {
+			return nil
+		}
+
 		final := make([]string, len(vs))
 		for i, a := range vs {
-			final[i] = string(a)
+			s := string(a)
+			if p, err := filepath.Rel(dir, s); err == nil {
+				s = p
+			} else {
+				s = strings.TrimPrefix(s, dir)
+			}
+			final[i] = s
 		}
 		return final
 	}
