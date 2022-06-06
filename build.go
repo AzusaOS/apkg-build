@@ -400,6 +400,20 @@ func (e *buildEnv) Stat(p string) (os.FileInfo, error) {
 	return os.Stat(p)
 }
 
+func (e *buildEnv) Lstat(p string) (os.FileInfo, error) {
+	if e.qemu != nil {
+		return e.qemu.sftp.Lstat(p)
+	}
+	return os.Lstat(p)
+}
+
+func (e *buildEnv) Readlink(p string) (string, error) {
+	if e.qemu != nil {
+		return e.qemu.sftp.ReadLink(p)
+	}
+	return os.Readlink(p)
+}
+
 func (e *buildEnv) ReadDir(p string) ([]os.FileInfo, error) {
 	if e.qemu != nil {
 		return e.qemu.sftp.ReadDir(p)
