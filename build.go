@@ -250,13 +250,13 @@ func (e *buildEnv) build(p *pkg) error {
 		return err
 	}
 
-	// we call applyEnv twice because in some cases we use ${S} which is defined by e.download()
-	e.applyEnv()
-
 	err = e.doImport()
 	if err != nil {
 		return err
 	}
+
+	// we call applyEnv twice because in some cases we use ${S} which is defined by e.download()
+	e.applyEnv()
 
 	// ok things are downloaded, now let's see what engine we're using
 	switch e.i.Engine {

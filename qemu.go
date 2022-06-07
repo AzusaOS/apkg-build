@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -10,6 +11,8 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,10 +21,11 @@ import (
 )
 
 type qemu struct {
-	cmd  *exec.Cmd
-	ssh  *ssh.Client
-	sftp *sftp.Client
-	port int
+	cmd      *exec.Cmd
+	ssh      *ssh.Client
+	sftp     *sftp.Client
+	port     int
+	useProxy bool
 }
 
 func (e *buildEnv) initQemu() error {
@@ -104,11 +108,17 @@ func (e *buildEnv) initQemu() error {
 	}
 
 	qemuExe := ""
+	qemuMachine := ""
 	switch e.arch {
 	case "amd64":
 		qemuExe = "qemu-system-x86_64"
+		qemuMachine = "q35"
 	case "386":
 		qemuExe = "qemu-system-x86_64"
+		qemuMachine = "q35"
+	case "arm64":
+		qemuExe = "qemu-system-aarch64"
+		qemuMachine = "virt"
 	default:
 		return fmt.Errorf("qemu arch not supported: %s", e.arch)
 	}
@@ -123,8 +133,10 @@ func (e *buildEnv) initQemu() error {
 		"-initrd", initrd,
 		//"-append", "console=ttyS0",
 		//"-serial", "stdio", // exclusive with -nographic
+		"-M", qemuMachine,
 		"-m", "8192",
 		"-cpu", "host",
+		"-smp", strconv.Itoa(runtime.NumCPU()),
 		"--enable-kvm",
 		"-netdev", fmt.Sprintf("user,id=hostnet0,hostfwd=tcp:127.0.0.1:%d-:22", port),
 		"-device", "e1000,netdev=hostnet0",
@@ -180,6 +192,10 @@ func (e *buildEnv) initQemu() error {
 		port: port,
 	}
 
+	if _, err := ftp.Stat("/pkg/main/sys-process.execproxy.core/libexec/execproxy"); err == nil {
+		e.qemu.useProxy = true
+	}
+
 	return nil
 }
 
@@ -220,6 +236,42 @@ func (q *qemu) runEnv(dir string, args []string, env []string, stdout, stderr io
 	}
 	go io.Copy(stdout, pipeout)
 	go io.Copy(stderr, pipeerr)
+
+	if q.useProxy {
+		// let's use proxy mode
+		proxy := "/pkg/main/sys-process.execproxy.core/libexec/execproxy"
+		env = append(env, "PWD="+dir) // add pwd to envp
+
+		// generate buffer
+		buf := &bytes.Buffer{}
+		buf.Write([]byte{0, 0, 0, 0}) // this will contain the len at the end
+		buf.WriteByte(byte(len(args)))
+		buf.WriteByte(byte(len(env)))
+		buf.WriteByte(0) // do not give full path, let execproxy find it
+		for _, s := range args {
+			buf.WriteString(s)
+			buf.WriteByte(0)
+		}
+		for _, s := range env {
+			buf.WriteString(s)
+			buf.WriteByte(0)
+		}
+		// make final buffer
+		v := buf.Bytes()
+		binary.BigEndian.PutUint32(v[:4], uint32(len(v)-4))
+
+		// do it
+		pipein, err := sess.StdinPipe()
+		if err != nil {
+			return err
+		}
+		go func() {
+			defer pipein.Close()
+			io.Copy(pipein, bytes.NewReader(v))
+		}()
+
+		return sess.Run(proxy)
+	}
 
 	return sess.Run(shellQuoteCmd("cd", dir) + ";" + shellQuoteEnv(env...) + shellQuoteCmd(args...))
 }
@@ -350,34 +402,34 @@ modprobe fuse
 echo "Waiting..."
 while true; do
 	sleep 1
-	if [ -d /pkg/main/azusa.symlinks.core/ ]; then
+	if [ -d /pkg/main/azusa.symlinks.core.linux.__ARCH__/ ]; then
 		break
 	fi
 done
 
 # rely on busybox for the next lines...
 rm -fr /bin /sbin
-ln -snf /pkg/main/azusa.symlinks.core.linux.amd64/bin /bin
-ln -snf /pkg/main/azusa.symlinks.core.linux.amd64/sbin /sbin
-ln -snf /pkg/main/azusa.symlinks.core.linux.amd64/lib /lib
-ln -snf /pkg/main/azusa.symlinks.core.linux.amd64/lib32 /lib32
-ln -snf /pkg/main/azusa.symlinks.core.linux.amd64/lib64 /lib64
+ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/bin /bin
+ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/sbin /sbin
+ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/lib /lib
+ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/lib32 /lib32
+ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/lib64 /lib64
 
 
 hash -r
 export PATH=/sbin:/bin
 
 mkdir -p /usr/libexec
-ln -snf /pkg/main/net-misc.openssh.core/libexec/sftp-server /usr/libexec
+ln -snf /pkg/main/net-misc.openssh.core.linux.__ARCH__/libexec/sftp-server /usr/libexec
 
-/bin/find /pkg/main/azusa.baselayout.core/ '(' -type f -o -type l ')' -printf '%P\n' | while read foo; do
+/bin/find /pkg/main/azusa.baselayout.core.linux.__ARCH__/ '(' -type f -o -type l ')' -printf '%P\n' | while read foo; do
 	if [ ! -f "$foo" ]; then
 		foo_dir="$(dirname "$foo")"
 		if [ ! -d "$foo_dir" ]; then
 			# make dir if missing
 			mkdir -p "$BASE/$foo_dir"
 		fi
-		cp -a "/pkg/main/azusa.baselayout.core/$foo" "$BASE/$foo"
+		cp -a "/pkg/main/azusa.baselayout.core.linux.__ARCH__/$foo" "$BASE/$foo"
 	fi
 done
 

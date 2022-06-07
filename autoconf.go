@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"runtime"
+	"strconv"
 
 	"mvdan.cc/sh/v3/shell"
 )
@@ -61,12 +63,16 @@ func (e *buildEnv) buildAutoconf() error {
 
 	buildDir := e.temp
 
+	if _, inPlace := opts["build_in_tree"]; inPlace {
+		buildDir = filepath.Dir(cnf)
+	}
+
 	err = e.runIn(buildDir, args...)
 	if err != nil {
 		return err
 	}
 
-	err = e.runIn(buildDir, "make")
+	err = e.runIn(buildDir, "make", "-j"+strconv.Itoa(runtime.NumCPU()))
 	if err != nil {
 		return err
 	}
