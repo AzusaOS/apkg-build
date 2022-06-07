@@ -279,6 +279,10 @@ func (e *buildEnv) build(p *pkg) error {
 		if err := e.buildNone(); err != nil {
 			return err
 		}
+	case "meson":
+		if err := e.buildMeson(); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported engine: %s", e.i.Engine)
 	}

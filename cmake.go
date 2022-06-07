@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+
+	"mvdan.cc/sh/v3/shell"
 )
 
 func (e *buildEnv) buildCmake() error {
@@ -66,6 +68,14 @@ func (e *buildEnv) buildCmake() error {
 	}
 
 	buildDir := e.temp
+
+	for _, arg := range e.i.Arguments {
+		arg, err = shell.Expand(arg, e.getVar)
+		if err != nil {
+			return err
+		}
+		cmakeOpts = append(cmakeOpts, arg)
+	}
 
 	err = e.runManyIn(buildDir, e.i.ConfigurePre)
 	if err != nil {

@@ -67,7 +67,7 @@ func (e *buildEnv) buildAutoconf() error {
 		buildDir = filepath.Dir(cnf)
 	}
 
-	err = e.runManyIn(buildDir, e.i.ConfigurePre)
+	err = e.runManyIn(filepath.Dir(cnf), e.i.ConfigurePre)
 	if err != nil {
 		return err
 	}
@@ -77,7 +77,7 @@ func (e *buildEnv) buildAutoconf() error {
 		return err
 	}
 
-	err = e.runManyIn(buildDir, e.i.ConfigurePost)
+	err = e.runManyIn(filepath.Dir(cnf), e.i.ConfigurePost)
 	if err != nil {
 		return err
 	}
