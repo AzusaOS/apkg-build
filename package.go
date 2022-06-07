@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"path/filepath"
@@ -8,6 +9,11 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+)
+
+var (
+	buildVersion = flag.String("version", "", "specify version to build")
+	buildArch    = flag.String("arch", runtime.GOARCH, "specify arch")
 )
 
 type pkg struct {
@@ -101,7 +107,10 @@ func (p *pkg) build() {
 		config:  c,
 		version: c.Versions.Latest(),
 		os:      runtime.GOOS,
-		arch:    runtime.GOARCH,
+		arch:    *buildArch,
+	}
+	if *buildVersion != "" {
+		e.version = *buildVersion
 	}
 	e.initVars()
 

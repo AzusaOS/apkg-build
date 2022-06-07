@@ -30,7 +30,7 @@ type qemu struct {
 
 func (e *buildEnv) initQemu() error {
 	// launch qemu... first we need to find out kernel version
-	kverB, err := ioutil.ReadFile("/pkg/main/sys-kernel.linux.core/version.txt")
+	kverB, err := ioutil.ReadFile("/pkg/main/sys-kernel.linux.core." + e.os + "." + e.arch + "/version.txt")
 	if err != nil {
 		return err
 	}
@@ -38,13 +38,13 @@ func (e *buildEnv) initQemu() error {
 	log.Printf("qemu: running with kernel %s", kver)
 
 	// let's try to locate initrd for this kernel
-	initrd := fmt.Sprintf("/tmp/initrd-apkg-build.kernel.%s.img", kver)
+	initrd := fmt.Sprintf("/tmp/initrd-apkg-build.kernel."+e.arch+".%s.img", kver)
 	if _, err := os.Stat(initrd); err != nil {
 		// we need to create initrd
 		log.Printf("Creating %s ...", initrd)
-		cpio := fmt.Sprintf("/tmp/initrd-apkg-build.kernel.%s.cpio", kver)
+		cpio := fmt.Sprintf("/tmp/initrd-apkg-build.kernel."+e.arch+".%s.cpio", kver)
 		c := exec.Command("/bin/bash", "-c", "find . | cpio -H newc -o -R +0:+0 -V --file "+cpio)
-		c.Dir = "/pkg/main/sys-kernel.linux.modules." + kver
+		c.Dir = "/pkg/main/sys-kernel.linux.modules." + kver + "." + e.os + "." + e.arch
 		c.Stdout = os.Stdout
 		c.Stderr = os.Stderr
 		err = c.Run()
@@ -54,15 +54,15 @@ func (e *buildEnv) initQemu() error {
 
 		// let's use /tmp
 		os.MkdirAll("/tmp/usr/azusa", 0755)
-		err = cloneFile("/tmp/usr/azusa/busybox", "/pkg/main/sys-apps.busybox.core/bin/busybox")
+		err = cloneFile("/tmp/usr/azusa/busybox", "/pkg/main/sys-apps.busybox.core."+e.os+"."+e.arch+"/bin/busybox")
 		if err != nil {
 			return err
 		}
-		err = cloneFile("/tmp/usr/azusa/simple.script", "/pkg/main/sys-apps.busybox.doc/examples/udhcp/simple.script")
+		err = cloneFile("/tmp/usr/azusa/simple.script", "/pkg/main/sys-apps.busybox.doc."+e.os+"."+e.arch+"/examples/udhcp/simple.script")
 		if err != nil {
 			return err
 		}
-		err = cloneFile("/tmp/usr/azusa/apkg", "/pkg/main/azusa.apkg.core/apkg")
+		err = cloneFile("/tmp/usr/azusa/apkg", "/pkg/main/azusa.apkg.core."+e.os+"."+e.arch+"/apkg")
 		if err != nil {
 			return err
 		}
@@ -127,20 +127,31 @@ func (e *buildEnv) initQemu() error {
 	port := rand.Intn(10000) + 10000
 	log.Printf("qemu: using qemu %s port %d for SSH", qemuExe, port)
 
-	c := exec.Command(
-		"/pkg/main/app-emulation.qemu.core/bin/"+qemuExe,
-		"-kernel", "/pkg/main/sys-kernel.linux.core."+kver+"/linux-"+kver+".img",
+	qemuCmd := []string{
+		"/pkg/main/app-emulation.qemu.core/bin/" + qemuExe,
+		"-kernel", "/pkg/main/sys-kernel.linux.core." + kver + "/linux-" + kver + ".img",
 		"-initrd", initrd,
 		//"-append", "console=ttyS0",
 		//"-serial", "stdio", // exclusive with -nographic
 		"-M", qemuMachine,
-		"-m", "8192",
-		"-cpu", "host",
-		"-smp", strconv.Itoa(runtime.NumCPU()),
-		"--enable-kvm",
+		"-m", "2048",
 		"-netdev", fmt.Sprintf("user,id=hostnet0,hostfwd=tcp:127.0.0.1:%d-:22", port),
 		"-device", "e1000,netdev=hostnet0",
-	)
+	}
+	switch e.arch {
+	case "amd64", "386":
+		qemuCmd = append(qemuCmd,
+			"--enable-kvm",
+			"-cpu", "host",
+			"-smp", strconv.Itoa(runtime.NumCPU()),
+		)
+	case "arm64":
+		qemuCmd = append(qemuCmd,
+			"-smp", "4",
+			"-append", "console=ttyS0",
+		)
+	}
+	c := exec.Command(qemuCmd[0], qemuCmd[1:]...)
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 
@@ -411,6 +422,8 @@ done
 rm -fr /bin /sbin
 ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/bin /bin
 ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/sbin /sbin
+ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/bin /usr/bin
+ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/sbin /usr/sbin
 ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/lib /lib
 ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/lib32 /lib32
 ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/lib64 /lib64

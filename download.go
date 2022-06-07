@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"mvdan.cc/sh/v3/shell"
 )
@@ -25,6 +26,12 @@ func (e *buildEnv) download() error {
 		}
 
 		fn := path.Base(u)
+		p := strings.Index(u, " -> ")
+		if p != -1 {
+			fn = u[p+4:]
+			u = u[:p]
+		}
+
 		tgt := filepath.Join(cacheDir, fn)
 		cacheUrl := "https://pkg.azusa.jp/src/main/" + e.category + "/" + e.name + "/" + fn
 		needUpload := false

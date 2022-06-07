@@ -72,6 +72,26 @@ func (e *buildEnv) buildAutoconf() error {
 		return err
 	}
 
+	if _, autoreconf := opts["autoreconf"]; autoreconf {
+		cnfPath := filepath.Dir(cnf)
+		log.Printf("Running autoreconf tools...")
+		libtoolize := []string{"libtoolize", "--force", "--install"}
+		reconf := []string{"autoreconf", "-fi", "-I", "/pkg/main/azusa.symlinks.core/share/aclocal/"}
+
+		if _, err := e.Stat(filepath.Join(cnfPath, "m4")); err == nil {
+			reconf = append(reconf, "-I", filepath.Join(cnfPath, "m4"))
+		}
+
+		err = e.runIn(cnfPath, libtoolize...)
+		if err != nil {
+			return err
+		}
+		err = e.runIn(cnfPath, reconf...)
+		if err != nil {
+			return err
+		}
+	}
+
 	err = e.runIn(buildDir, args...)
 	if err != nil {
 		return err

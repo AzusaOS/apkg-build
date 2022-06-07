@@ -52,7 +52,8 @@ func (e *buildEnv) doImport() error {
 		if err != nil {
 			return err
 		}
-		e.appendVar("CPPFLAGS", strings.TrimSpace(string(data)), " ")
+		data = bytes.TrimSpace(data)
+		e.appendVar("CPPFLAGS", string(data), " ")
 		vals := bytes.Split(data, []byte{' '})
 		for _, v := range vals {
 			if len(v) == 0 {
@@ -67,7 +68,8 @@ func (e *buildEnv) doImport() error {
 		if err != nil {
 			return err
 		}
-		e.appendVar("LDFLAGS", strings.TrimSpace(string(data)), " ")
+		data = bytes.TrimSpace(data)
+		e.appendVar("LDFLAGS", string(data), " ")
 		vals = bytes.Split(data, []byte{' '})
 		for _, v := range vals {
 			if len(v) == 0 {

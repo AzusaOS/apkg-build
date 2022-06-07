@@ -18,6 +18,15 @@ func (e *buildEnv) applyPatches() error {
 			return err
 		}
 
+		if e.qemu != nil {
+			fn2 := filepath.Join("/tmp", filepath.Base(fn))
+			err = e.cloneFile(fn2, fn)
+			if err != nil {
+				return err
+			}
+			fn = fn2
+		}
+
 		// apply patch
 		log.Printf("Applying patch %s", patch)
 
