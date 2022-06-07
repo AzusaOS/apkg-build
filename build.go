@@ -57,6 +57,13 @@ type buildInstructions struct {
 	Engine    string   `yaml:"engine"`            // build engine
 	Options   []string `yaml:"options,flow,omitempty"`
 	Arguments []string `yaml:"arguments,omitempty"` // extra arguments
+
+	ConfigurePre  []string `yaml:"configure_pre,omitempty"`
+	ConfigurePost []string `yaml:"configure_post,omitempty"`
+	CompilePre    []string `yaml:"compile_pre,omitempty"`
+	CompilePost   []string `yaml:"compile_post,omitempty"`
+	InstallPre    []string `yaml:"install_pre,omitempty"`
+	InstallPost   []string `yaml:"install_post,omitempty"`
 }
 
 type buildConfig struct {
@@ -268,6 +275,10 @@ func (e *buildEnv) build(p *pkg) error {
 		if err := e.buildCmake(); err != nil {
 			return err
 		}
+	case "none":
+		if err := e.buildNone(); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported engine: %s", e.i.Engine)
 	}
@@ -315,6 +326,16 @@ func (e *buildEnv) run(args ...string) error {
 	e.setCmdEnv(cmd)
 
 	return cmd.Run()
+}
+
+func (e *buildEnv) runManyIn(dir string, cmds []string) error {
+	for _, cmd := range cmds {
+		err := e.runIn(dir, "/bin/bash", "-c", cmd)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (e *buildEnv) runIn(dir string, args ...string) error {
