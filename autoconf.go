@@ -11,6 +11,7 @@ import (
 )
 
 func (e *buildEnv) buildAutoconf() error {
+	var err error
 	// perform autoconf build
 	opts := make(map[string]bool)
 
@@ -24,6 +25,30 @@ func (e *buildEnv) buildAutoconf() error {
 	for _, f := range flist {
 		log.Printf("upgrading %s", f)
 		cloneFile(filepath.Join(e.workdir, f), filepath.Join("/pkg/main/sys-devel.gnuconfig.core/share/gnuconfig", filepath.Base(f)))
+	}
+
+	err = e.runManyIn(e.src, e.i.ConfigurePre)
+	if err != nil {
+		return err
+	}
+
+	if _, autoreconf := opts["autoreconf"]; autoreconf {
+		log.Printf("Running autoreconf tools...")
+		libtoolize := []string{"libtoolize", "--force", "--install"}
+		reconf := []string{"autoreconf", "-fi", "-I", "/pkg/main/azusa.symlinks.core/share/aclocal/"}
+
+		if _, err := e.Stat(filepath.Join(e.src, "m4")); err == nil {
+			reconf = append(reconf, "-I", filepath.Join(e.src, "m4"))
+		}
+
+		err = e.runIn(e.src, libtoolize...)
+		if err != nil {
+			return err
+		}
+		err = e.runIn(e.src, reconf...)
+		if err != nil {
+			return err
+		}
 	}
 
 	cnf := e.findConfigure()
@@ -52,7 +77,6 @@ func (e *buildEnv) buildAutoconf() error {
 		}
 	}
 
-	var err error
 	for _, arg := range e.i.Arguments {
 		arg, err = shell.Expand(arg, e.getVar)
 		if err != nil {
@@ -65,31 +89,6 @@ func (e *buildEnv) buildAutoconf() error {
 
 	if _, inPlace := opts["build_in_tree"]; inPlace {
 		buildDir = filepath.Dir(cnf)
-	}
-
-	err = e.runManyIn(filepath.Dir(cnf), e.i.ConfigurePre)
-	if err != nil {
-		return err
-	}
-
-	if _, autoreconf := opts["autoreconf"]; autoreconf {
-		cnfPath := filepath.Dir(cnf)
-		log.Printf("Running autoreconf tools...")
-		libtoolize := []string{"libtoolize", "--force", "--install"}
-		reconf := []string{"autoreconf", "-fi", "-I", "/pkg/main/azusa.symlinks.core/share/aclocal/"}
-
-		if _, err := e.Stat(filepath.Join(cnfPath, "m4")); err == nil {
-			reconf = append(reconf, "-I", filepath.Join(cnfPath, "m4"))
-		}
-
-		err = e.runIn(cnfPath, libtoolize...)
-		if err != nil {
-			return err
-		}
-		err = e.runIn(cnfPath, reconf...)
-		if err != nil {
-			return err
-		}
 	}
 
 	err = e.runIn(buildDir, args...)

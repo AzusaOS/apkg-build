@@ -55,7 +55,7 @@ type buildInstructions struct {
 	Import    []string `yaml:"import,omitempty"`  // list of imports
 	Source    []string `yaml:"source"`            // url of source (if multiple files, multiple urls)
 	Patches   []string `yaml:"patches,omitempty"` // patches to apply to source
-	Engine    string   `yaml:"engine"`            // build engine
+	Engine    string   `yaml:"engine,omitempty"`  // build engine
 	Options   []string `yaml:"options,flow,omitempty"`
 	Arguments []string `yaml:"arguments,omitempty"` // extra arguments
 
@@ -254,7 +254,7 @@ func (e *buildEnv) build(p *pkg) error {
 	// let's just build latest version
 	e.i = e.config.getInstructions(e.version)
 	if e.i == nil {
-		return errors.New("no instructions available")
+		e.i = &buildInstructions{Engine: "auto"}
 	}
 	log.Printf("building version %s of %s using %s", e.version, p.fn, e.i.Engine)
 
@@ -281,6 +281,21 @@ func (e *buildEnv) build(p *pkg) error {
 
 	// we call applyEnv twice because in some cases we use ${S} which is defined by e.download()
 	e.applyEnv()
+
+	if e.i.Engine == "auto" || e.i.Engine == "" {
+		// detect based on files found in src
+		if _, err = e.Stat(filepath.Join(e.src, "CMakeLists.txt")); err == nil {
+			e.i = &buildInstructions{Engine: "cmake"}
+		} else if _, err = e.Stat(filepath.Join(e.src, "meson_options.txt")); err == nil {
+			e.i = &buildInstructions{Engine: "meson"}
+		} else if _, err = e.Stat(filepath.Join(e.src, "configure")); err == nil {
+			e.i = &buildInstructions{Engine: "autoconf"}
+		} else if _, err = e.Stat(filepath.Join(e.src, "configure.ac")); err == nil {
+			e.i = &buildInstructions{Engine: "autoconf", Options: []string{"autoreconf"}}
+		} else {
+			return errors.New("could not detect build type")
+		}
+	}
 
 	// ok things are downloaded, now let's see what engine we're using
 	switch e.i.Engine {
