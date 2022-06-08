@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -84,6 +85,8 @@ func (e *buildEnv) archive() error {
 				return fmt.Errorf("while fetching from qemu: %w", err)
 			}
 		}
+		h := hashFile(squash)
+		log.Printf("hash: %+v", h)
 	}
 
 	return nil

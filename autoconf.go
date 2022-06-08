@@ -122,7 +122,7 @@ func (e *buildEnv) buildAutoconf() error {
 		return err
 	}
 
-	err = e.runIn(buildDir, "make", "install", "DESTDIR="+e.dist)
+	err = e.runIn(buildDir, "make", "install", "DESTDIR="+e.dist, "LDCONFIG=/bin/true")
 	if err != nil {
 		return err
 	}

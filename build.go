@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/unix"
 	"gopkg.in/yaml.v3"
@@ -68,13 +69,20 @@ type buildInstructions struct {
 
 type buildConfig struct {
 	pkgname  string
+	epoch    string // unix timestamp of last commit of file
+	meta     *buildMeta
 	Versions *buildVersions        `yaml:"versions"`
 	Build    []*buildInstructions  `yaml:"build"`
 	Files    map[string]*buildFile `yaml:"files,omitempty"`
 }
 
+type buildMeta struct {
+	Files map[string]*buildFile `yaml:"files,omitempty"`
+}
+
 type buildFile struct {
 	Size   int64
+	Added  time.Time
 	Hashes map[string]string
 }
 
@@ -98,25 +106,33 @@ func (bv *buildConfig) getInstructions(v string) *buildInstructions {
 	}
 	return nil
 }
+
+func (bv *buildConfig) Export() (map[string][]byte, error) {
+	build, err := yaml.Marshal(bv)
+	if err != nil {
+		return nil, err
+	}
+	meta, err := yaml.Marshal(bv.meta)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string][]byte{"build.yaml": build, "metadata.yaml": meta}, nil
+}
+
 func (bv *buildConfig) Save() error {
-	tgt := filepath.Join(repoPath(), bv.pkgname, "build.yaml")
-	f, err := os.Create(tgt + "~")
+	data, err := bv.Export()
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
-	enc := yaml.NewEncoder(f)
-
-	err = enc.Encode(bv)
-	if err != nil {
-		return err
+	for fn, data := range data {
+		err = ioutil.WriteFile(filepath.Join(repoPath(), bv.pkgname, fn), data, 0644)
+		if err != nil {
+			return err
+		}
 	}
-	enc.Close()
-	f.Close()
-
-	// rename
-	return os.Rename(tgt+"~", tgt)
+	return nil
 }
 
 func (e *buildEnv) initVars() error {
@@ -187,6 +203,7 @@ func (e *buildEnv) initVars() error {
 		// default stuff
 		"PKG_CONFIG_LIBDIR": "/pkg/main/azusa.symlinks.core/pkgconfig",
 		"XDG_DATA_DIRS":     "/usr/share",
+		"SOURCE_DATE_EPOCH": e.config.epoch,
 	}
 
 	return nil
@@ -305,7 +322,7 @@ func (e *buildEnv) build(p *pkg) error {
 func (e *buildEnv) fullEnv() []string {
 	var env []string
 
-	env = append(env, "HOSTNAME=localhost", "HOME="+e.base, "PATH=/usr/sbin:/usr/bin:/sbin:/bin")
+	env = append(env, "HOSTNAME=localhost", "HOME="+e.base, "PATH=/build/bin:/usr/sbin:/usr/bin:/sbin:/bin")
 	for k, v := range e.vars {
 		env = append(env, k+"="+v)
 	}

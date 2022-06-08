@@ -133,6 +133,12 @@ func (e *buildEnv) orgFixDev() error {
 		}
 	}
 
+	// fix archives to be deterministic
+	list := e.findFiles(filepath.Join(e.dist, e.getDir("dev")), "*.a")
+	for _, f := range list {
+		e.run("objcopy", "--enable-deterministic-archives", filepath.Join(e.dist, e.getDir("dev"), f))
+	}
+
 	return nil
 }
 

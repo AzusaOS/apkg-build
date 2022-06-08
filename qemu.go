@@ -134,7 +134,7 @@ func (e *buildEnv) initQemu() error {
 		//"-append", "console=ttyS0",
 		//"-serial", "stdio", // exclusive with -nographic
 		"-M", qemuMachine,
-		"-m", "2048",
+		"-m", "8192",
 		"-netdev", fmt.Sprintf("user,id=hostnet0,hostfwd=tcp:127.0.0.1:%d-:22", port),
 		"-device", "e1000,netdev=hostnet0",
 	}
@@ -405,6 +405,15 @@ find /sys -name modalias -print0 | xargs -0 sort -u | xargs /sbin/modprobe -a
 ip link set lo up
 ip link set eth0 up
 udhcpc -n -i eth0 -s /usr/azusa/simple.script
+
+mkdir -p /var/lib/apkg
+mkdir -p /build
+mount -t tmpfs tmpfs /var/lib/apkg
+mount -t tmpfs tmpfs /build
+# disable ldconfig
+mkdir /build/bin
+echo '#!/bin/bash' >/build/bin/ldconfig
+chmod +x /build/bin/ldconfig
 
 modprobe fuse
 /usr/azusa/apkg >/var/log/apkg.log 2>&1 &

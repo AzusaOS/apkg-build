@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"mvdan.cc/sh/v3/shell"
 )
@@ -65,20 +66,25 @@ func (e *buildEnv) download() error {
 		}
 
 		updated := false
-		info, ok := e.config.Files[fn]
+		info, ok := e.config.meta.Files[fn]
 		if !ok {
 			updated = true
 			info = &buildFile{
 				Size:   st.Size(),
+				Added:  time.Now(),
 				Hashes: make(map[string]string),
 			}
-			if e.config.Files == nil {
-				e.config.Files = make(map[string]*buildFile)
+			if e.config.meta.Files == nil {
+				e.config.meta.Files = make(map[string]*buildFile)
 			}
-			e.config.Files[fn] = info
+			e.config.meta.Files[fn] = info
 		} else {
 			if info.Size != st.Size() {
 				return fmt.Errorf("invalid file size for %s", fn)
+			}
+			if info.Added.IsZero() {
+				updated = true
+				info.Added = time.Now()
 			}
 		}
 

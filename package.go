@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -86,8 +87,35 @@ func (p *pkg) readBuildConfig() (*buildConfig, error) {
 		return nil, err
 	}
 
+	// read meta
+	f, err = os.Open(filepath.Join(p.base(), "metadata.yaml"))
+	if err == nil {
+		defer f.Close()
+		dec = yaml.NewDecoder(f)
+		dec.KnownFields(true)
+
+		err = dec.Decode(&bc.meta)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		bc.meta = &buildMeta{}
+		bc.meta.Files = bc.Files
+		bc.Files = nil
+	}
+
 	bc.pkgname = p.fn
 	bc.Save()
+
+	// fetch last commit date for build.yaml
+	c := exec.Command("git", "log", "-1", "--pretty=%ct", "build.yaml")
+	c.Dir = p.base()
+	c.Stderr = os.Stderr
+	out, err := c.Output()
+	if err != nil {
+		return nil, err
+	}
+	bc.epoch = strings.TrimSpace(string(out))
 
 	return bc, nil
 }
