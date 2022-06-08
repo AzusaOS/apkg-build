@@ -77,7 +77,7 @@ type buildConfig struct {
 }
 
 type buildMeta struct {
-	Files map[string]*buildFile `yaml:"files,omitempty"`
+	Files map[string]*buildFile `yaml:"files"`
 }
 
 type buildFile struct {
@@ -183,22 +183,23 @@ func (e *buildEnv) initVars() error {
 	log.Printf("Using %s as build directory", e.base)
 
 	e.vars = map[string]string{
-		"P":        e.name + "-" + e.version,
-		"PN":       e.name,                   // zlib
-		"PF":       e.name + "-" + e.version, // pf = full (includes revision)
-		"CATEGORY": e.category,
-		"PV":       e.version,
-		"PVR":      e.pvr, // TODO add revision (or strip from PV)
-		"PVRF":     e.pvrf,
-		"PKG":      e.category + "." + e.name,
-		"WORKDIR":  e.workdir,
-		"D":        e.dist,
-		"T":        e.temp,
-		"CHOST":    e.chost,
-		"ARCH":     e.arch,
-		"OS":       e.os,
-		"BITS":     strconv.FormatInt(int64(e.bits), 10),
-		"FILESDIR": filepath.Join(repoPath(), e.config.pkgname, "files"),
+		"P":         e.name + "-" + e.version,
+		"PN":        e.name,                   // zlib
+		"PF":        e.name + "-" + e.version, // pf = full (includes revision)
+		"CATEGORY":  e.category,
+		"PV":        e.version,
+		"PVR":       e.pvr, // TODO add revision (or strip from PV)
+		"PVRF":      e.pvrf,
+		"PKG":       e.category + "." + e.name,
+		"WORKDIR":   e.workdir,
+		"D":         e.dist,
+		"T":         e.temp,
+		"CHOST":     e.chost,
+		"ARCH":      e.arch,
+		"OS":        e.os,
+		"BITS":      strconv.FormatInt(int64(e.bits), 10),
+		"FILESDIR":  filepath.Join(repoPath(), e.config.pkgname, "files"),
+		"LIBSUFFIX": e.libsuffix,
 
 		// default stuff
 		"PKG_CONFIG_LIBDIR": "/pkg/main/azusa.symlinks.core/pkgconfig",
@@ -626,16 +627,4 @@ func (e *buildEnv) WalkDir(root string, fn fs.WalkDirFunc) error {
 		return nil
 	}
 	return filepath.WalkDir(root, fn)
-}
-
-type statThing struct {
-	os.FileInfo
-}
-
-func (s statThing) Info() (os.FileInfo, error) {
-	return s.FileInfo, nil
-}
-
-func (s statThing) Type() fs.FileMode {
-	return s.Mode().Type()
 }

@@ -23,6 +23,10 @@ func (e *buildEnv) applyEnv() error {
 		}
 
 		e.vars[k] = v
+		switch k {
+		case "S":
+			e.src = v
+		}
 	}
 	return nil
 }

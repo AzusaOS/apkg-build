@@ -129,12 +129,11 @@ func (e *buildEnv) initQemu() error {
 
 	qemuCmd := []string{
 		"/pkg/main/app-emulation.qemu.core/bin/" + qemuExe,
-		"-kernel", "/pkg/main/sys-kernel.linux.core." + kver + "/linux-" + kver + ".img",
+		"-kernel", "/pkg/main/sys-kernel.linux.core." + kver + "." + e.os + "." + e.arch + "/linux-" + kver + ".img",
 		"-initrd", initrd,
 		//"-append", "console=ttyS0",
 		//"-serial", "stdio", // exclusive with -nographic
 		"-M", qemuMachine,
-		"-m", "8192",
 		"-netdev", fmt.Sprintf("user,id=hostnet0,hostfwd=tcp:127.0.0.1:%d-:22", port),
 		"-device", "e1000,netdev=hostnet0",
 	}
@@ -144,13 +143,19 @@ func (e *buildEnv) initQemu() error {
 			"--enable-kvm",
 			"-cpu", "host",
 			"-smp", strconv.Itoa(runtime.NumCPU()),
+			"-m", "8192",
 		)
 	case "arm64":
 		qemuCmd = append(qemuCmd,
+			"-cpu", "cortex-a53",
 			"-smp", "4",
-			"-append", "console=ttyS0",
+			//"-serial", "stdio",
+			//"-append", "console=ttyS0",
+			"-m", "2048",
 		)
 	}
+
+	log.Printf("Running QEMU: %s", strings.Join(qemuCmd, " "))
 	c := exec.Command(qemuCmd[0], qemuCmd[1:]...)
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
@@ -433,9 +438,10 @@ ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/bin /bin
 ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/sbin /sbin
 ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/bin /usr/bin
 ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/sbin /usr/sbin
-ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/lib /lib
 ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/lib32 /lib32
 ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/lib64 /lib64
+mv /lib /.lib.orig || true
+ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/lib /lib
 
 
 hash -r
@@ -464,6 +470,6 @@ echo "Running dropbear..."
 mkdir /etc/dropbear
 dropbear -E -B -R
 
-/bin/bash -i
+/bin/bash -i || ash -i
 poweroff -f
 `

@@ -1,3 +1,3 @@
 # TODO
 
-* make reproducible builds
+* python & perl build support
