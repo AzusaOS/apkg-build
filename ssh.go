@@ -149,7 +149,8 @@ func (b *sshBackend) WriteFile(filename string, data []byte, perm fs.FileMode) e
 	return nil
 }
 
-func (b *sshBackend) PutFile(tgt, src string) error {
+func (b *sshBackend) PutFile(src, tgt string) error {
+	log.Printf("Copying local file %s to %s", src, tgt)
 	// need to create file via sftp
 	in, err := os.Open(src)
 	if err != nil {
@@ -173,7 +174,7 @@ func (b *sshBackend) PutFile(tgt, src string) error {
 }
 
 func (b *sshBackend) GetFile(remote, local string) error {
-	log.Printf("qemu: copying %s to local %s", remote, local)
+	log.Printf("qemu: copying remote %s to local %s", remote, local)
 	in, err := b.sftp.Open(remote)
 	if err != nil {
 		return err
@@ -198,7 +199,7 @@ func (b *sshBackend) GetFile(remote, local string) error {
 
 func (b *sshBackend) runCapture(args ...string) ([]byte, error) {
 	buf := &bytes.Buffer{}
-	err := b.RunEnv("/", args, []string{"HOME=/", "PATH=/build/bin:/sbin:/bin"}, buf, nil)
+	err := b.RunEnv("/", args, nil, buf, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +221,8 @@ func (b *sshBackend) RunEnv(dir string, args []string, env []string, stdout, std
 	}
 
 	if env == nil {
-		env = os.Environ()
+		env = []string{"HOME=/", "PATH=/build/bin:/sbin:/bin"}
+		//env = os.Environ()
 	}
 
 	// copy env
