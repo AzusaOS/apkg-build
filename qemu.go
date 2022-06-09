@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"net"
 	"os"
 	"os/exec"
@@ -29,6 +28,26 @@ type qemu struct {
 }
 
 func (e *buildEnv) initQemu() error {
+	qemuExe := ""
+	qemuMachine := ""
+	var port int
+	switch e.arch {
+	case "amd64":
+		qemuExe = "qemu-system-x86_64"
+		qemuMachine = "q35"
+		port = 10088
+	case "386":
+		qemuExe = "qemu-system-x86_64"
+		qemuMachine = "q35"
+		port = 10089
+	case "arm64":
+		qemuExe = "qemu-system-aarch64"
+		qemuMachine = "virt"
+		port = 10090
+	default:
+		return fmt.Errorf("qemu arch not supported: %s", e.arch)
+	}
+
 	// launch qemu... first we need to find out kernel version
 	kverB, err := ioutil.ReadFile("/pkg/main/sys-kernel.linux.core." + e.os + "." + e.arch + "/version.txt")
 	if err != nil {
@@ -107,24 +126,6 @@ func (e *buildEnv) initQemu() error {
 		os.Remove(cpio)
 	}
 
-	qemuExe := ""
-	qemuMachine := ""
-	switch e.arch {
-	case "amd64":
-		qemuExe = "qemu-system-x86_64"
-		qemuMachine = "q35"
-	case "386":
-		qemuExe = "qemu-system-x86_64"
-		qemuMachine = "q35"
-	case "arm64":
-		qemuExe = "qemu-system-aarch64"
-		qemuMachine = "virt"
-	default:
-		return fmt.Errorf("qemu arch not supported: %s", e.arch)
-	}
-
-	// choose a random port
-	port := rand.Intn(10000) + 10000
 	log.Printf("qemu: using qemu %s port %d for SSH", qemuExe, port)
 
 	qemuCmd := []string{
@@ -147,7 +148,7 @@ func (e *buildEnv) initQemu() error {
 		)
 	case "arm64":
 		qemuCmd = append(qemuCmd,
-			"-cpu", "cortex-a53",
+			"-cpu", "max", //"cortex-a53",
 			"-smp", "4",
 			//"-serial", "stdio",
 			//"-append", "console=ttyS0",
