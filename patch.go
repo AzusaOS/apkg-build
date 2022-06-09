@@ -18,9 +18,9 @@ func (e *buildEnv) applyPatches() error {
 			return err
 		}
 
-		if e.qemu != nil {
+		if !e.backend.IsLocal() {
 			fn2 := filepath.Join("/tmp", filepath.Base(fn))
-			err = e.cloneFile(fn2, fn)
+			err = e.backend.ImportFile(fn2, fn)
 			if err != nil {
 				return err
 			}

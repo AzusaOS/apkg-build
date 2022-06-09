@@ -37,7 +37,7 @@ func (e *buildEnv) buildAutoconf() error {
 		libtoolize := []string{"libtoolize", "--force", "--install"}
 		reconf := []string{"autoreconf", "-fi", "-I", "/pkg/main/azusa.symlinks.core/share/aclocal/"}
 
-		if _, err := e.Stat(filepath.Join(e.src, "m4")); err == nil {
+		if _, err := e.backend.Stat(filepath.Join(e.src, "m4")); err == nil {
 			reconf = append(reconf, "-I", filepath.Join(e.src, "m4"))
 		}
 
@@ -143,7 +143,7 @@ func (e *buildEnv) findConfigure() string {
 	}
 
 	t := filepath.Join(e.src, "configure")
-	if st, err := e.Stat(t); err == nil && st.Mode()&1 == 1 {
+	if st, err := e.backend.Stat(t); err == nil && st.Mode()&1 == 1 {
 		return t
 	}
 

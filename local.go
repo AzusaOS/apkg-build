@@ -1,18 +1,41 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"io/fs"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"golang.org/x/sys/unix"
 )
 
 type localBackend struct{}
 
 func NewLocal() Backend {
 	return &localBackend{}
+}
+
+func (b *localBackend) Base() (string, error) {
+	if err := unix.Access("/build", unix.W_OK); err == nil {
+		return "/build", nil
+	}
+	// can't use /build
+	home := os.Getenv("HOME")
+	if home == "" {
+		return fmt.Sprintf("/tmp/build-%d", os.Getuid()), nil
+	}
+	return filepath.Join(home, "tmp", "build"), nil
+}
+
+func (b *localBackend) IsLocal() bool {
+	return true
+}
+
+func (b *localBackend) IsRoot() bool {
+	return os.Getuid() == 0
 }
 
 func (b *localBackend) Create(p string) (io.WriteCloser, error) {
@@ -73,6 +96,16 @@ func (b *localBackend) WriteFile(filename string, data []byte, perm fs.FileMode)
 }
 
 func (b *localBackend) ImportFile(tgt, src string) error {
+	if src == tgt {
+		return nil
+	}
+	return cloneFile(tgt, src)
+}
+
+func (b *localBackend) ExportFile(src, tgt string) error {
+	if src == tgt {
+		return nil
+	}
 	return cloneFile(tgt, src)
 }
 

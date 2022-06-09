@@ -18,7 +18,7 @@ func (e *buildEnv) fixElf() error {
 
 	log.Printf("Running fixelf...")
 
-	return e.WalkDir(e.dist, func(path string, d fs.DirEntry, err error) error {
+	return e.backend.WalkDir(e.dist, func(path string, d fs.DirEntry, err error) error {
 		if !d.Type().IsRegular() {
 			// not a regular file → ignore
 			return nil

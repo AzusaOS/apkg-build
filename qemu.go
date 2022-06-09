@@ -2,9 +2,7 @@ package main
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -15,17 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
-
-type qemu struct {
-	cmd      *exec.Cmd
-	ssh      *ssh.Client
-	sftp     *sftp.Client
-	port     int
-	useProxy bool
-}
 
 func (e *buildEnv) initQemu() error {
 	qemuExe := ""
@@ -46,6 +35,27 @@ func (e *buildEnv) initQemu() error {
 		port = 10090
 	default:
 		return fmt.Errorf("qemu arch not supported: %s", e.arch)
+	}
+
+	// let's try once to see if qemu is out there
+
+	cfg := &ssh.ClientConfig{
+		User: "root",
+		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+			// accept anything
+			return nil
+		},
+		Timeout: 10 * time.Second,
+	}
+
+	sshc, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), cfg)
+	if err == nil {
+		// ooh, let's try that
+		be, err := NewSshBackend(sshc)
+		if err == nil {
+			e.backend = be
+			return nil
+		}
 	}
 
 	// launch qemu... first we need to find out kernel version
@@ -164,182 +174,23 @@ func (e *buildEnv) initQemu() error {
 	c.Start()
 
 	// let's try to connect to this port
-	cfg := &ssh.ClientConfig{
-		User: "root",
-		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
-			// accept anything
-			return nil
-		},
-		Timeout: 10 * time.Second,
-	}
-
 	log.Printf("Waiting for qemu to finish loading...")
 
-	var sshc *ssh.Client
 	for {
 		sshc, err = ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), cfg)
 		if err != nil {
 			time.Sleep(2 * time.Second)
 			continue
 		}
-
-		break
-	}
-
-	sess, err := sshc.NewSession()
-	if err != nil {
-		return err
-	}
-	res, err := sess.Output("uname -a")
-	sess.Close()
-	if err != nil {
-		return err
-	}
-	log.Printf("qemu: ready, running %s", bytes.TrimSpace(res))
-
-	ftp, err := sftp.NewClient(sshc)
-	if err != nil {
-		return err
-	}
-
-	e.qemu = &qemu{
-		cmd:  c,
-		ssh:  sshc,
-		sftp: ftp,
-		port: port,
-	}
-
-	if _, err := ftp.Stat("/pkg/main/sys-process.execproxy.core/libexec/execproxy"); err == nil {
-		e.qemu.useProxy = true
-	}
-
-	return nil
-}
-
-func (q *qemu) runEnv(dir string, args []string, env []string, stdout, stderr io.Writer) error {
-	sess, err := q.ssh.NewSession()
-	if err != nil {
-		return err
-	}
-	defer sess.Close()
-
-	if stdout == nil {
-		stdout = os.Stdout
-	}
-	if stderr == nil {
-		stderr = os.Stderr
-	}
-
-	// copy env
-	// looks like setenv doesn't work with dropbear
-	/*
-		for _, e := range env {
-			p := strings.IndexByte(e, '=')
-			if p != -1 {
-				err = sess.Setenv(e[:p], e[p+1:])
-				if err != nil {
-					log.Printf("error: %s", err)
-				}
-			}
-		}*/
-
-	pipeout, err := sess.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	pipeerr, err := sess.StderrPipe()
-	if err != nil {
-		return err
-	}
-	go io.Copy(stdout, pipeout)
-	go io.Copy(stderr, pipeerr)
-
-	if q.useProxy {
-		// let's use proxy mode
-		proxy := "/pkg/main/sys-process.execproxy.core/libexec/execproxy"
-		env = append(env, "PWD="+dir) // add pwd to envp
-
-		// generate buffer
-		buf := &bytes.Buffer{}
-		buf.Write([]byte{0, 0, 0, 0}) // this will contain the len at the end
-		buf.WriteByte(byte(len(args)))
-		buf.WriteByte(byte(len(env)))
-		buf.WriteByte(0) // do not give full path, let execproxy find it
-		for _, s := range args {
-			buf.WriteString(s)
-			buf.WriteByte(0)
-		}
-		for _, s := range env {
-			buf.WriteString(s)
-			buf.WriteByte(0)
-		}
-		// make final buffer
-		v := buf.Bytes()
-		binary.BigEndian.PutUint32(v[:4], uint32(len(v)-4))
-
-		// do it
-		pipein, err := sess.StdinPipe()
+		be, err := NewSshBackend(sshc)
 		if err != nil {
-			return err
+			time.Sleep(2 * time.Second)
+			continue
 		}
-		go func() {
-			defer pipein.Close()
-			io.Copy(pipein, bytes.NewReader(v))
-		}()
 
-		return sess.Run(proxy)
+		e.backend = be
+		return nil
 	}
-
-	return sess.Run(shellQuoteCmd("cd", dir) + ";" + shellQuoteEnv(env...) + shellQuoteCmd(args...))
-}
-
-func (q *qemu) run(args ...string) error {
-	sess, err := q.ssh.NewSession()
-	if err != nil {
-		return err
-	}
-	defer sess.Close()
-
-	stdout, err := sess.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	stderr, err := sess.StderrPipe()
-	if err != nil {
-		return err
-	}
-	go io.Copy(os.Stdout, stdout)
-	go io.Copy(os.Stderr, stderr)
-
-	return sess.Run(shellQuoteCmd(args...))
-}
-
-func (q *qemu) off() error {
-	return q.run("/pkg/main/sys-apps.busybox.core/bin/busybox", "poweroff", "-f")
-}
-
-func (q *qemu) fetchFile(remote, local string) error {
-	log.Printf("qemu: copying %s to local %s", remote, local)
-	in, err := q.sftp.Open(remote)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.Create(local)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	if err != nil {
-		return err
-	}
-
-	if st, err := in.Stat(); err == nil {
-		out.Chmod(st.Mode())
-	}
-	return nil
 }
 
 func shellQuoteEnv(env ...string) string {

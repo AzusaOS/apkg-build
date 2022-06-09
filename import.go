@@ -30,13 +30,13 @@ func (e *buildEnv) doImport() error {
 		incDir := "/pkg/main/" + s + ".dev" + vers + "/include"
 		libDir := "/pkg/main/" + s + ".libs" + vers + "/lib" + e.libsuffix
 
-		if _, err := e.Stat(incDir); err == nil {
+		if _, err := e.backend.Stat(incDir); err == nil {
 			// found includes
 			e.appendVar("CPPFLAGS", "-I"+incDir, " ")
 			e.appendVar("CPATH", incDir, ":")
 			e.appendVar("CMAKE_SYSTEM_INCLUDE_PATH", incDir, ";")
 		}
-		if _, err := e.Stat(libDir); err == nil {
+		if _, err := e.backend.Stat(libDir); err == nil {
 			e.appendVar("LDFLAGS", "-L"+libDir, " ")
 			e.appendVar("CMAKE_SYSTEM_LIBRARY_PATH", libDir, ";")
 		}

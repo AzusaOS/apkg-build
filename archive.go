@@ -10,10 +10,10 @@ import (
 
 func (e *buildEnv) archive() error {
 	infofile := filepath.Join(repoPath(), e.config.pkgname, "azusa.yaml")
-	if _, err := e.Stat(infofile); err == nil {
+	if _, err := e.backend.Stat(infofile); err == nil {
 		// there's a azusa.yaml file
 		tgt := filepath.Join(e.dist, e.getDir("core"))
-		e.MkdirAll(tgt, 0755)
+		e.backend.MkdirAll(tgt, 0755)
 		err := cloneFile(filepath.Join(tgt, "azusa.yaml"), infofile)
 		if err != nil {
 			return fmt.Errorf("failed to copy azusa.yaml: %w", err)
@@ -26,7 +26,7 @@ func (e *buildEnv) archive() error {
 	buf := &bytes.Buffer{}
 
 	for _, sub := range []string{"lib64", "lib32", "lib"} {
-		st, err := e.Lstat(filepath.Join(libdir, sub))
+		st, err := e.backend.Lstat(filepath.Join(libdir, sub))
 		if err != nil {
 			// does not exist?
 			continue
@@ -42,7 +42,7 @@ func (e *buildEnv) archive() error {
 
 	if buf.Len() > 0 {
 		// run ldconfig
-		err := e.WriteFile(filepath.Join(e.dist, e.getDir("libs"), ".ld.so.conf"), buf.Bytes(), 0644)
+		err := e.backend.WriteFile(filepath.Join(e.dist, e.getDir("libs"), ".ld.so.conf"), buf.Bytes(), 0644)
 		if err != nil {
 			return fmt.Errorf("while creating .ld.so.conf: %w", err)
 		}
@@ -53,14 +53,14 @@ func (e *buildEnv) archive() error {
 	}
 
 	// let's run squashfs
-	list, err := e.ReadDir(filepath.Join(e.dist, "pkg", "main"))
+	list, err := e.backend.ReadDir(filepath.Join(e.dist, "pkg", "main"))
 	if err != nil {
 		return err
 	}
 
 	apkgOut := "/tmp/apkg"
-	e.MkdirAll(apkgOut, 0755)
-	if e.qemu != nil {
+	e.backend.MkdirAll(apkgOut, 0755)
+	if !e.backend.IsLocal() {
 		// also make dir locally if using qemu
 		os.MkdirAll(apkgOut, 0755)
 	}
@@ -69,7 +69,7 @@ func (e *buildEnv) archive() error {
 		sub := nfo.Name()
 		squash := filepath.Join(apkgOut, sub+".squashfs")
 
-		if e.qemu != nil || os.Getuid() == 0 {
+		if e.backend.IsRoot() {
 			err = e.run("mksquashfs", filepath.Join(e.dist, "pkg", "main", sub), squash, "-nopad", "-noappend")
 		} else {
 			err = e.run("mksquashfs", filepath.Join(e.dist, "pkg", "main", sub), squash, "-all-root", "-nopad", "-noappend")
@@ -77,9 +77,9 @@ func (e *buildEnv) archive() error {
 		if err != nil {
 			return fmt.Errorf("while running mksquashfs: %w", err)
 		}
-		if e.qemu != nil {
+		if !e.backend.IsLocal() {
 			// fetch file locally
-			err = e.qemu.fetchFile(squash, squash)
+			err = e.backend.ExportFile(squash, squash)
 			if err != nil {
 				return fmt.Errorf("while fetching from qemu: %w", err)
 			}

@@ -11,7 +11,7 @@ func (e *buildEnv) buildCmake() error {
 	// build custom rules (gentoo inspired)
 	buildRules := filepath.Join(e.base, "azusa_rules.cmake")
 
-	f, err := e.Create(buildRules)
+	f, err := e.backend.Create(buildRules)
 	if err != nil {
 		return err
 	}
@@ -34,7 +34,7 @@ func (e *buildEnv) buildCmake() error {
 
 	commonConfig := filepath.Join(e.base, "azusa_common_config.cmake")
 
-	f, err = e.Create(commonConfig)
+	f, err = e.backend.Create(commonConfig)
 	if err != nil {
 		return err
 	}

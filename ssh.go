@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/sftp"
@@ -18,6 +20,7 @@ type sshBackend struct {
 	ssh      *ssh.Client
 	sftp     *sftp.Client
 	useProxy bool
+	uid      int
 }
 
 func NewSshBackend(s *ssh.Client) (Backend, error) {
@@ -40,13 +43,41 @@ func NewSshBackend(s *ssh.Client) (Backend, error) {
 	b := &sshBackend{
 		ssh:  s,
 		sftp: ftp,
+		uid:  -1,
 	}
 
 	if _, err := ftp.Stat("/pkg/main/sys-process.execproxy.core/libexec/execproxy"); err == nil {
 		b.useProxy = true
 	}
 
+	idS, err := b.runCapture("/usr/bin/id", "-u")
+	if err == nil {
+		id, err := strconv.ParseInt(strings.TrimSpace(string(idS)), 10, 64)
+		if err == nil {
+			b.uid = int(id)
+		}
+	} else {
+		log.Printf("ssh: failed to get connected ID: %s", err)
+	}
+
 	return b, nil
+}
+
+func (b *sshBackend) Base() (string, error) {
+	if b.uid == 0 {
+		return "/build", nil
+	}
+
+	// just return something in /tmp instead of grabbing $HOME
+	return fmt.Sprintf("/tmp/build-%d", b.uid), nil
+}
+
+func (b *sshBackend) IsLocal() bool {
+	return false
+}
+
+func (b *sshBackend) IsRoot() bool {
+	return b.uid == 0
 }
 
 func (b *sshBackend) Create(p string) (io.WriteCloser, error) {
@@ -141,9 +172,33 @@ func (b *sshBackend) ImportFile(tgt, src string) error {
 	return nil
 }
 
+func (b *sshBackend) ExportFile(remote, local string) error {
+	log.Printf("qemu: copying %s to local %s", remote, local)
+	in, err := b.sftp.Open(remote)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(local)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	if err != nil {
+		return err
+	}
+
+	if st, err := in.Stat(); err == nil {
+		out.Chmod(st.Mode())
+	}
+	return nil
+}
+
 func (b *sshBackend) runCapture(args ...string) ([]byte, error) {
 	buf := &bytes.Buffer{}
-	err := b.RunEnv("/", args, nil, buf, nil)
+	err := b.RunEnv("/", args, []string{"HOME=/", "PATH=/build/bin:/sbin:/bin"}, buf, nil)
 	if err != nil {
 		return nil, err
 	}

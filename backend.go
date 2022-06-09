@@ -8,6 +8,9 @@ import (
 
 // Backend are basically build environments
 type Backend interface {
+	Base() (string, error)
+	IsLocal() bool
+	IsRoot() bool
 	RunEnv(dir string, args []string, env []string, stdout, stderr io.Writer) error
 	MkdirAll(dir string, mode fs.FileMode) error
 	Mkdir(dir string, mode fs.FileMode) error
@@ -25,4 +28,5 @@ type Backend interface {
 	WalkDir(root string, fn fs.WalkDirFunc) error
 	FindFiles(dir string, fnList ...string) []string // find files based on patterns (any matching file)
 	ImportFile(tgt, src string) error                // copy local file to target
+	ExportFile(tgt, src string) error                // copy remote file to local
 }

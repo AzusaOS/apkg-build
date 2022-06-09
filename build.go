@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"io/ioutil"
 	"log"
-	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -16,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
 	"gopkg.in/yaml.v3"
 )
 
 type buildEnv struct {
+	backend   Backend
 	pkg       *pkg
 	i         *buildInstructions
 	os        string // "linux"
@@ -35,7 +33,6 @@ type buildEnv struct {
 	chost     string // i686-pc-linux-gnu, x86_64-pc-linux-gnu, etc
 	libsuffix string // "64" or ""
 	vars      map[string]string
-	qemu      *qemu
 
 	base    string // base path for build
 	workdir string // WORKDIR=$PKGBASE/work
@@ -139,21 +136,16 @@ func (e *buildEnv) initVars() error {
 	e.category = path.Dir(e.pkg.fn) // category, eg. app-arch
 	e.name = path.Base(e.pkg.fn)    // zlib
 
+	e.backend = NewLocal()
+
 	err := e.initQemu()
 	if err != nil {
 		log.Printf("WARNING: failed to init qemu: %s (will build locally)", err)
 	}
 
-	tmpbase := "/build"
-	if e.qemu == nil {
-		if err := unix.Access("/build", unix.W_OK); err != nil {
-			// can't use /build
-			home := os.Getenv("HOME")
-			if home == "" {
-				home = "/tmp"
-			}
-			tmpbase = filepath.Join(home, "tmp", "build")
-		}
+	tmpbase, err := e.backend.Base()
+	if err != nil {
+		return err
 	}
 
 	e.base = filepath.Join(tmpbase, e.name+"-"+e.version)
@@ -212,14 +204,14 @@ func (e *buildEnv) initVars() error {
 
 func (e *buildEnv) initDir() error {
 	// cleanup
-	e.RemoveAll(e.base)
-	err := e.MkdirAll(e.base, 0755)
+	e.backend.RemoveAll(e.base)
+	err := e.backend.MkdirAll(e.base, 0755)
 	if err != nil {
 		return err
 	}
 
 	for _, sub := range []string{"work", "dist", "temp"} {
-		err = e.Mkdir(filepath.Join(e.base, sub), 0755)
+		err = e.backend.Mkdir(filepath.Join(e.base, sub), 0755)
 		if err != nil {
 			return err
 		}
@@ -228,10 +220,7 @@ func (e *buildEnv) initDir() error {
 }
 
 func (e *buildEnv) cleanup() error {
-	if e.qemu != nil {
-		return e.qemu.off()
-	}
-	return e.RemoveAll(e.base)
+	return e.backend.RemoveAll(e.base)
 }
 
 func (e *buildEnv) getVar(v string) string {
@@ -285,13 +274,13 @@ func (e *buildEnv) build(p *pkg) error {
 
 	if e.i.Engine == "auto" || e.i.Engine == "" {
 		// detect based on files found in src
-		if _, err = e.Stat(filepath.Join(e.src, "CMakeLists.txt")); err == nil {
+		if _, err = e.backend.Stat(filepath.Join(e.src, "CMakeLists.txt")); err == nil {
 			e.i = &buildInstructions{Engine: "cmake"}
-		} else if _, err = e.Stat(filepath.Join(e.src, "meson_options.txt")); err == nil {
+		} else if _, err = e.backend.Stat(filepath.Join(e.src, "meson_options.txt")); err == nil {
 			e.i = &buildInstructions{Engine: "meson"}
-		} else if _, err = e.Stat(filepath.Join(e.src, "configure")); err == nil {
+		} else if _, err = e.backend.Stat(filepath.Join(e.src, "configure")); err == nil {
 			e.i = &buildInstructions{Engine: "autoconf"}
-		} else if _, err = e.Stat(filepath.Join(e.src, "configure.ac")); err == nil {
+		} else if _, err = e.backend.Stat(filepath.Join(e.src, "configure.ac")); err == nil {
 			e.i = &buildInstructions{Engine: "autoconf", Options: []string{"autoreconf"}}
 		} else {
 			return errors.New("could not detect build type")
@@ -353,16 +342,7 @@ func (e *buildEnv) setCmdEnv(c *exec.Cmd) {
 func (e *buildEnv) run(args ...string) error {
 	log.Printf("build: running %s", strings.Join(args, " "))
 
-	if e.qemu != nil {
-		return e.qemu.runEnv("/", args, e.fullEnv(), nil, nil)
-	}
-	cmd := exec.Command(args[0], args[1:]...)
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	e.setCmdEnv(cmd)
-
-	return cmd.Run()
+	return e.backend.RunEnv("/", args, e.fullEnv(), nil, nil)
 }
 
 func (e *buildEnv) runManyIn(dir string, cmds []string) error {
@@ -378,253 +358,30 @@ func (e *buildEnv) runManyIn(dir string, cmds []string) error {
 func (e *buildEnv) runIn(dir string, args ...string) error {
 	log.Printf("build: running %s", strings.Join(args, " "))
 
-	if e.qemu != nil {
-		return e.qemu.runEnv(dir, args, e.fullEnv(), nil, nil)
-	}
-
-	cmd := exec.Command(args[0], args[1:]...)
-
-	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	e.setCmdEnv(cmd)
-
-	return cmd.Run()
+	return e.backend.RunEnv(dir, args, e.fullEnv(), nil, nil)
 }
 
 func (e *buildEnv) runCapture(args ...string) ([]byte, error) {
 	log.Printf("build: running %s", strings.Join(args, " "))
 
-	if e.qemu != nil {
-		buf := &bytes.Buffer{}
-		err := e.qemu.runEnv("/", args, e.fullEnv(), buf, nil)
-		if err != nil {
-			return nil, err
-		}
-		return buf.Bytes(), nil
+	buf := &bytes.Buffer{}
+	err := e.backend.RunEnv("/", args, e.fullEnv(), buf, nil)
+	if err != nil {
+		return nil, err
 	}
-
-	cmd := exec.Command(args[0], args[1:]...)
-
-	cmd.Stderr = os.Stderr
-	e.setCmdEnv(cmd)
-
-	return cmd.Output()
+	return buf.Bytes(), nil
 }
 
 func (e *buildEnv) runCaptureSilent(args ...string) ([]byte, error) {
-	if e.qemu != nil {
-		buf := &bytes.Buffer{}
-		err := e.qemu.runEnv("/", args, e.fullEnv(), buf, io.Discard)
-		if err != nil {
-			return nil, err
-		}
-		return buf.Bytes(), nil
+	buf := &bytes.Buffer{}
+	err := e.backend.RunEnv("/", args, e.fullEnv(), buf, io.Discard)
+	if err != nil {
+		return nil, err
 	}
-
-	cmd := exec.Command(args[0], args[1:]...)
-
-	e.setCmdEnv(cmd)
-
-	return cmd.Output()
+	return buf.Bytes(), nil
 }
 
 func (e *buildEnv) getDir(name string) string {
 	// return /pkg/main/${PKG}.core.${PVRF}
 	return "/pkg/main/" + e.category + "." + e.name + "." + name + "." + e.pvrf
-}
-
-func (e *buildEnv) MkdirAll(dir string, mode fs.FileMode) error {
-	if e.qemu != nil {
-		return e.qemu.sftp.MkdirAll(dir)
-	}
-	return os.MkdirAll(dir, mode)
-}
-
-func (e *buildEnv) Mkdir(dir string, mode fs.FileMode) error {
-	if e.qemu != nil {
-		return e.qemu.sftp.Mkdir(dir)
-	}
-	return os.Mkdir(dir, mode)
-}
-
-func (e *buildEnv) cloneFile(tgt, src string) error {
-	if e.qemu != nil {
-		// need to create file via sftp
-		in, err := os.Open(src)
-		if err != nil {
-			return err
-		}
-		defer in.Close()
-		out, err := e.qemu.sftp.Create(tgt)
-		if err != nil {
-			return err
-		}
-		defer out.Close()
-		_, err = io.Copy(out, in)
-		if err != nil {
-			return err
-		}
-		if st, err := in.Stat(); err == nil {
-			// chmod
-			out.Chmod(st.Mode())
-		}
-		return nil
-	}
-	return cloneFile(tgt, src)
-}
-
-func (e *buildEnv) WriteFile(filename string, data []byte, perm fs.FileMode) error {
-	if e.qemu != nil {
-		f, err := e.qemu.sftp.Create(filename)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		f.Chmod(perm)
-
-		_, err = f.Write(data)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-
-	return ioutil.WriteFile(filename, data, perm)
-}
-
-func (e *buildEnv) Stat(p string) (os.FileInfo, error) {
-	if e.qemu != nil {
-		return e.qemu.sftp.Stat(p)
-	}
-	return os.Stat(p)
-}
-
-func (e *buildEnv) Lstat(p string) (os.FileInfo, error) {
-	if e.qemu != nil {
-		return e.qemu.sftp.Lstat(p)
-	}
-	return os.Lstat(p)
-}
-
-func (e *buildEnv) Readlink(p string) (string, error) {
-	if e.qemu != nil {
-		return e.qemu.sftp.ReadLink(p)
-	}
-	return os.Readlink(p)
-}
-
-func (e *buildEnv) ReadDir(p string) ([]os.FileInfo, error) {
-	if e.qemu != nil {
-		return e.qemu.sftp.ReadDir(p)
-	}
-	f, err := os.Open(p)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	return f.Readdir(0)
-}
-
-func (e *buildEnv) Rename(oldname, newname string) error {
-	if e.qemu != nil {
-		return e.qemu.sftp.PosixRename(oldname, newname)
-	}
-
-	return os.Rename(oldname, newname)
-}
-
-func (e *buildEnv) Remove(f string) error {
-	if e.qemu != nil {
-		return e.qemu.sftp.Remove(f)
-	}
-	return os.Remove(f)
-}
-
-func (e *buildEnv) RemoveAll(path string) error {
-	if e.qemu != nil {
-		return e.run("rm", "-fr", path)
-	}
-	return os.RemoveAll(path)
-}
-
-func (e *buildEnv) Symlink(oldname, newname string) error {
-	if e.qemu != nil {
-		return e.qemu.sftp.Symlink(oldname, newname)
-	}
-	return os.Symlink(oldname, newname)
-}
-
-func (e *buildEnv) Create(f string) (io.WriteCloser, error) {
-	if e.qemu != nil {
-		return e.qemu.sftp.Create(f)
-	}
-	return os.Create(f)
-}
-
-func (e *buildEnv) findFiles(dir string, fnList ...string) []string {
-	if e.qemu != nil {
-		dir = filepath.Clean(dir)
-
-		cmd := []string{"find", dir, "-type", "f", "("}
-
-		for i, fn := range fnList {
-			if i == 0 {
-				cmd = append(cmd, "-name", fn)
-			} else {
-				cmd = append(cmd, "-o", "-name", fn)
-			}
-		}
-		cmd = append(cmd, ")", "-print0")
-
-		res, err := e.runCapture(cmd...)
-		if err != nil {
-			return nil
-		}
-		vs := bytes.Split(res, []byte{0})
-		// typically, last vs should be empty
-		if len(vs[len(vs)-1]) == 0 {
-			vs = vs[:len(vs)-1]
-		}
-		if len(vs) == 0 {
-			return nil
-		}
-
-		final := make([]string, len(vs))
-		for i, a := range vs {
-			s := string(a)
-			if p, err := filepath.Rel(dir, s); err == nil {
-				s = p
-			} else {
-				s = strings.TrimPrefix(s, dir)
-			}
-			final[i] = s
-		}
-		return final
-	}
-	return findFiles(dir, fnList...)
-}
-
-func (e *buildEnv) WalkDir(root string, fn fs.WalkDirFunc) error {
-	if e.qemu != nil {
-		walk := e.qemu.sftp.Walk(root)
-		for walk.Step() {
-			if err := walk.Err(); err != nil {
-				return err
-			}
-			p := walk.Path()
-			// func(path string, d fs.DirEntry, err error) error
-			// stat it
-			st, err := e.qemu.sftp.Stat(p)
-			if err != nil {
-				return err
-			}
-			err = fn(p, statThing{st}, nil)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	return filepath.WalkDir(root, fn)
 }
