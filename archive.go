@@ -14,7 +14,7 @@ func (e *buildEnv) archive() error {
 		// there's a azusa.yaml file
 		tgt := filepath.Join(e.dist, e.getDir("core"))
 		e.backend.MkdirAll(tgt, 0755)
-		err := cloneFile(filepath.Join(tgt, "azusa.yaml"), infofile)
+		err := e.backend.PutFile(infofile, filepath.Join(tgt, "azusa.yaml"))
 		if err != nil {
 			return fmt.Errorf("failed to copy azusa.yaml: %w", err)
 		}
@@ -79,7 +79,7 @@ func (e *buildEnv) archive() error {
 		}
 		if !e.backend.IsLocal() {
 			// fetch file locally
-			err = e.backend.ExportFile(squash, squash)
+			err = e.backend.GetFile(squash, squash)
 			if err != nil {
 				return fmt.Errorf("while fetching from qemu: %w", err)
 			}

@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-func cloneFile(tgt, src string) error {
+func cloneFile(src, tgt string) error {
 	// let's first try to hardlink (will fail if not on the same partition)
 	err := os.Link(src, tgt)
 	if err == nil {

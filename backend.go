@@ -27,6 +27,6 @@ type Backend interface {
 	Create(f string) (io.WriteCloser, error)
 	WalkDir(root string, fn fs.WalkDirFunc) error
 	FindFiles(dir string, fnList ...string) []string // find files based on patterns (any matching file)
-	ImportFile(tgt, src string) error                // copy local file to target
-	ExportFile(tgt, src string) error                // copy remote file to local
+	PutFile(tgt, src string) error                   // copy local file to target
+	GetFile(tgt, src string) error                   // copy remote file to local
 }

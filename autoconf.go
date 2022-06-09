@@ -24,7 +24,7 @@ func (e *buildEnv) buildAutoconf() error {
 	flist := findFiles(e.workdir, "config.sub", "config.guess")
 	for _, f := range flist {
 		log.Printf("upgrading %s", f)
-		cloneFile(filepath.Join(e.workdir, f), filepath.Join("/pkg/main/sys-devel.gnuconfig.core/share/gnuconfig", filepath.Base(f)))
+		e.run("cp", "-f", filepath.Join("/pkg/main/sys-devel.gnuconfig.core/share/gnuconfig", filepath.Base(f)), filepath.Join(e.workdir, f))
 	}
 
 	err = e.runManyIn(e.src, e.i.ConfigurePre)

@@ -95,18 +95,18 @@ func (b *localBackend) WriteFile(filename string, data []byte, perm fs.FileMode)
 	return ioutil.WriteFile(filename, data, perm)
 }
 
-func (b *localBackend) ImportFile(tgt, src string) error {
+func (b *localBackend) PutFile(src, tgt string) error {
 	if src == tgt {
 		return nil
 	}
-	return cloneFile(tgt, src)
+	return cloneFile(src, tgt)
 }
 
-func (b *localBackend) ExportFile(src, tgt string) error {
+func (b *localBackend) GetFile(src, tgt string) error {
 	if src == tgt {
 		return nil
 	}
-	return cloneFile(tgt, src)
+	return cloneFile(src, tgt)
 }
 
 func (b *localBackend) RunEnv(dir string, args []string, env []string, stdout, stderr io.Writer) error {

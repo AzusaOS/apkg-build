@@ -20,7 +20,7 @@ func (e *buildEnv) applyPatches() error {
 
 		if !e.backend.IsLocal() {
 			fn2 := filepath.Join("/tmp", filepath.Base(fn))
-			err = e.backend.ImportFile(fn2, fn)
+			err = e.backend.PutFile(fn, fn2)
 			if err != nil {
 				return err
 			}

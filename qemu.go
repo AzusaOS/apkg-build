@@ -83,15 +83,15 @@ func (e *buildEnv) initQemu() error {
 
 		// let's use /tmp
 		os.MkdirAll("/tmp/usr/azusa", 0755)
-		err = cloneFile("/tmp/usr/azusa/busybox", "/pkg/main/sys-apps.busybox.core."+e.os+"."+e.arch+"/bin/busybox")
+		err = cloneFile("/pkg/main/sys-apps.busybox.core."+e.os+"."+e.arch+"/bin/busybox", "/tmp/usr/azusa/busybox")
 		if err != nil {
 			return err
 		}
-		err = cloneFile("/tmp/usr/azusa/simple.script", "/pkg/main/sys-apps.busybox.doc."+e.os+"."+e.arch+"/examples/udhcp/simple.script")
+		err = cloneFile("/pkg/main/sys-apps.busybox.doc."+e.os+"."+e.arch+"/examples/udhcp/simple.script", "/tmp/usr/azusa/simple.script")
 		if err != nil {
 			return err
 		}
-		err = cloneFile("/tmp/usr/azusa/apkg", "/pkg/main/azusa.apkg.core."+e.os+"."+e.arch+"/apkg")
+		err = cloneFile("/pkg/main/azusa.apkg.core."+e.os+"."+e.arch+"/apkg", "/tmp/usr/azusa/apkg")
 		if err != nil {
 			return err
 		}

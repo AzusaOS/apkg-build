@@ -112,7 +112,7 @@ func (e *buildEnv) download() error {
 
 		// copy file to work
 		workTgt := filepath.Join(e.workdir, fn)
-		err = e.backend.ImportFile(workTgt, tgt)
+		err = e.backend.PutFile(tgt, workTgt)
 		if err != nil {
 			return err
 		}

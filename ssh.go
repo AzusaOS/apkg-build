@@ -149,7 +149,7 @@ func (b *sshBackend) WriteFile(filename string, data []byte, perm fs.FileMode) e
 	return nil
 }
 
-func (b *sshBackend) ImportFile(tgt, src string) error {
+func (b *sshBackend) PutFile(tgt, src string) error {
 	// need to create file via sftp
 	in, err := os.Open(src)
 	if err != nil {
@@ -172,7 +172,7 @@ func (b *sshBackend) ImportFile(tgt, src string) error {
 	return nil
 }
 
-func (b *sshBackend) ExportFile(remote, local string) error {
+func (b *sshBackend) GetFile(remote, local string) error {
 	log.Printf("qemu: copying %s to local %s", remote, local)
 	in, err := b.sftp.Open(remote)
 	if err != nil {
