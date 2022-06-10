@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -134,4 +135,8 @@ func (b *localBackend) FindFiles(dir string, fnList ...string) []string {
 func (b *localBackend) WalkDir(root string, fn fs.WalkDirFunc) error {
 	return filepath.WalkDir(root, fn)
 
+}
+
+func (b *localBackend) Dial(n, addr string) (net.Conn, error) {
+	return net.Dial(n, addr)
 }

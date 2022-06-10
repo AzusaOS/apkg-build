@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"io/fs"
+	"net"
 	"os"
 )
 
@@ -29,4 +30,6 @@ type Backend interface {
 	FindFiles(dir string, fnList ...string) []string // find files based on patterns (any matching file)
 	PutFile(tgt, src string) error                   // copy local file to target
 	GetFile(tgt, src string) error                   // copy remote file to local
+
+	Dial(n, addr string) (net.Conn, error) // dial inside backend
 }

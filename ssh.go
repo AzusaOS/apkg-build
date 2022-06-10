@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -360,4 +361,8 @@ func (s statThing) Info() (os.FileInfo, error) {
 
 func (s statThing) Type() fs.FileMode {
 	return s.Mode().Type()
+}
+
+func (b *sshBackend) Dial(n, addr string) (net.Conn, error) {
+	return b.ssh.Dial(n, addr)
 }
