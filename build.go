@@ -105,16 +105,12 @@ func (bv *buildConfig) getInstructions(v string) *buildInstructions {
 }
 
 func (bv *buildConfig) Export() (map[string][]byte, error) {
-	build, err := yaml.Marshal(bv)
-	if err != nil {
-		return nil, err
-	}
 	meta, err := yaml.Marshal(bv.meta)
 	if err != nil {
 		return nil, err
 	}
 
-	return map[string][]byte{"build.yaml": build, "metadata.yaml": meta}, nil
+	return map[string][]byte{"metadata.yaml": meta}, nil
 }
 
 func (bv *buildConfig) Save() error {

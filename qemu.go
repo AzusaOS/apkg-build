@@ -138,6 +138,14 @@ func (e *buildEnv) initQemu() error {
 
 	log.Printf("qemu: using qemu %s port %d for SSH", qemuExe, port)
 
+	// create a disk image
+	diskImage := fmt.Sprintf("/tmp/qemu-build-%s.qcow2", e.arch)
+	os.Remove(diskImage)
+	err = exec.Command("/pkg/main/app-emulation.qemu.core/bin/qemu-img", "create", "-f", "qcow2", diskImage, "128G").Run()
+	if err != nil {
+		return fmt.Errorf("failed to create build temp image: %w", err)
+	}
+
 	qemuCmd := []string{
 		"/pkg/main/app-emulation.qemu.core/bin/" + qemuExe,
 		"-kernel", "/pkg/main/sys-kernel.linux.core." + kver + "." + e.os + "." + e.arch + "/linux-" + kver + ".img",
@@ -147,6 +155,10 @@ func (e *buildEnv) initQemu() error {
 		"-M", qemuMachine,
 		"-netdev", fmt.Sprintf("user,id=hostnet0,hostfwd=tcp:127.0.0.1:%d-:22", port),
 		"-device", "e1000,netdev=hostnet0",
+		"-blockdev", "{\"driver\":\"file\",\"filename\":\"" + diskImage + "\",\"node-name\":\"build-storage\",\"discard\":\"unmap\"}",
+		"-blockdev", `{"node-name":"build-format","read-only":false,"driver":"qcow2","file":"build-storage"}`,
+		"-device", "ich9-ahci,id=ahci",
+		"-device", "ide-hd,drive=build-format,id=disk0,bus=ahci.0",
 	}
 	switch e.arch {
 	case "amd64", "386":
@@ -236,9 +248,9 @@ mount -t proc proc /proc
 mkdir -p /etc
 ln -snf /proc/self/mounts /etc/mtab
 
-mkdir -p /sys
+mkdir -p /sys /tmp /var/log
+
 mount -t sysfs sys /sys
-mkdir -p /tmp /var/log
 
 # init /dev (on ramfs)
 mkdir -p /dev
@@ -254,8 +266,9 @@ mknod /dev/random c 1 8
 mknod /dev/urandom c 1 9
 mknod /dev/zero c 1 5
 mount -t devtmpfs dev /dev
-mkdir /dev/pts
+mkdir -p /dev/pts /dev/shm
 mount -t devpts devpts /dev/pts
+mount -t tmpfs tmpfs /dev/shm
 
 find /sys -name modalias -print0 | xargs -0 sort -u | xargs /sbin/modprobe -a
 
@@ -264,13 +277,7 @@ ip link set eth0 up
 udhcpc -n -i eth0 -s /usr/azusa/simple.script
 
 mkdir -p /var/lib/apkg
-mkdir -p /build
 mount -t tmpfs tmpfs /var/lib/apkg
-mount -t tmpfs tmpfs /build
-# disable ldconfig
-mkdir /build/bin
-echo '#!/bin/bash' >/build/bin/ldconfig
-chmod +x /build/bin/ldconfig
 
 modprobe fuse
 /usr/azusa/apkg >/var/log/apkg.log 2>&1 &
@@ -314,6 +321,22 @@ ln -snf /pkg/main/net-misc.openssh.core.linux.__ARCH__/libexec/sftp-server /usr/
 done
 
 dbus-uuidgen --ensure=/etc/machine-id
+
+mkdir -p /build
+if [ -e /dev/vda ]; then
+	echo "Formatting build disk..."
+	mkfs.ext4 -f /dev/vda
+	mount -t ext4 /dev/vda /build
+elif [ -e /dev/sda ]; then
+	echo "Formatting build disk..."
+	mkfs.ext4 -f /dev/sda
+	mount -t ext4 /dev/sda /build
+fi
+
+# disable ldconfig
+mkdir /build/bin
+echo '#!/bin/bash' >/build/bin/ldconfig
+chmod +x /build/bin/ldconfig
 
 # set root password to empty
 sed -i 's/root:\*:/root::/' /etc/shadow
