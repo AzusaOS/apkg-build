@@ -265,7 +265,7 @@ func (e *buildEnv) build(p *pkg) error {
 		return err
 	}
 
-	// we call applyEnv twice because in some cases we use ${S} which is defined by e.download()
+	// we call applyEnv a second time because in some cases we use ${S} which is defined by e.download(), or we use $CPPFLAGS defined by import
 	e.applyEnv()
 
 	if e.i.Engine == "auto" || e.i.Engine == "" {

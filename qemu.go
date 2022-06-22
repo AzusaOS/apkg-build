@@ -16,11 +16,11 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func (e *buildEnv) initQemu() error {
+func NewQemuBackend(tgtos, arch string) (Backend, error) {
 	qemuExe := ""
 	qemuMachine := ""
 	var port int
-	switch e.arch {
+	switch arch {
 	case "amd64":
 		qemuExe = "qemu-system-x86_64"
 		qemuMachine = "q35"
@@ -34,7 +34,7 @@ func (e *buildEnv) initQemu() error {
 		qemuMachine = "virt"
 		port = 10090
 	default:
-		return fmt.Errorf("qemu arch not supported: %s", e.arch)
+		return nil, fmt.Errorf("qemu arch not supported: %s", arch)
 	}
 
 	// let's try once to see if qemu is out there
@@ -51,54 +51,50 @@ func (e *buildEnv) initQemu() error {
 	sshc, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), cfg)
 	if err == nil {
 		// ooh, let's try that
-		be, err := NewSshBackend(sshc)
-		if err == nil {
-			e.backend = be
-			return nil
-		}
+		return NewSshBackend(sshc)
 	}
 
 	// launch qemu... first we need to find out kernel version
-	kverB, err := ioutil.ReadFile("/pkg/main/sys-kernel.linux.core." + e.os + "." + e.arch + "/version.txt")
+	kverB, err := ioutil.ReadFile("/pkg/main/sys-kernel.linux.core." + tgtos + "." + arch + "/version.txt")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	kver := strings.TrimSpace(string(kverB))
 	log.Printf("qemu: running with kernel %s", kver)
 
 	// let's try to locate initrd for this kernel
-	initrd := fmt.Sprintf("/tmp/initrd-apkg-build.kernel."+e.arch+".%s.img", kver)
+	initrd := fmt.Sprintf("/tmp/initrd-apkg-build.kernel.%s.%s.img", arch, kver)
 	if _, err := os.Stat(initrd); err != nil {
 		// we need to create initrd
 		log.Printf("Creating %s ...", initrd)
-		cpio := fmt.Sprintf("/tmp/initrd-apkg-build.kernel."+e.arch+".%s.cpio", kver)
+		cpio := fmt.Sprintf("/tmp/initrd-apkg-build.kernel.%s.%s.cpio", arch, kver)
 		c := exec.Command("/bin/bash", "-c", "find . | cpio -H newc -o -R +0:+0 -V --file "+cpio)
-		c.Dir = "/pkg/main/sys-kernel.linux.modules." + kver + "." + e.os + "." + e.arch
+		c.Dir = "/pkg/main/sys-kernel.linux.modules." + kver + "." + tgtos + "." + arch
 		c.Stdout = os.Stdout
 		c.Stderr = os.Stderr
 		err = c.Run()
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		// let's use /tmp
 		os.MkdirAll("/tmp/usr/azusa", 0755)
-		err = cloneFile("/pkg/main/sys-apps.busybox.core."+e.os+"."+e.arch+"/bin/busybox", "/tmp/usr/azusa/busybox")
+		err = cloneFile("/pkg/main/sys-apps.busybox.core."+tgtos+"."+arch+"/bin/busybox", "/tmp/usr/azusa/busybox")
 		if err != nil {
-			return err
+			return nil, err
 		}
-		err = cloneFile("/pkg/main/sys-apps.busybox.doc."+e.os+"."+e.arch+"/examples/udhcp/simple.script", "/tmp/usr/azusa/simple.script")
+		err = cloneFile("/pkg/main/sys-apps.busybox.doc."+tgtos+"."+arch+"/examples/udhcp/simple.script", "/tmp/usr/azusa/simple.script")
 		if err != nil {
-			return err
+			return nil, err
 		}
-		err = cloneFile("/pkg/main/azusa.apkg.core."+e.os+"."+e.arch+"/apkg", "/tmp/usr/azusa/apkg")
+		err = cloneFile("/pkg/main/azusa.apkg.core."+tgtos+"."+arch+"/apkg", "/tmp/usr/azusa/apkg")
 		if err != nil {
-			return err
+			return nil, err
 		}
-		str := strings.ReplaceAll(initData, "__ARCH__", e.arch)
+		str := strings.ReplaceAll(initData, "__ARCH__", arch)
 		err = ioutil.WriteFile("/tmp/init", []byte(str), 0755)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		// update cpio
@@ -112,7 +108,7 @@ func (e *buildEnv) initQemu() error {
 		c.Stderr = os.Stderr
 		err = c.Run()
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		// cleanup (TODO use a temp subdir for that)
@@ -123,14 +119,14 @@ func (e *buildEnv) initQemu() error {
 		c = exec.Command("xz", "-v", "--check=crc32", "--x86", "--lzma2", "--stdout", cpio)
 		out, err := os.Create(initrd)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		c.Stdout = out
 		c.Stderr = os.Stderr
 		err = c.Run()
 		out.Close()
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		os.Remove(cpio)
@@ -139,16 +135,16 @@ func (e *buildEnv) initQemu() error {
 	log.Printf("qemu: using qemu %s port %d for SSH", qemuExe, port)
 
 	// create a disk image
-	diskImage := fmt.Sprintf("/tmp/qemu-build-%s.qcow2", e.arch)
+	diskImage := fmt.Sprintf("/tmp/qemu-build-%s.qcow2", arch)
 	os.Remove(diskImage)
 	err = exec.Command("/pkg/main/app-emulation.qemu.core/bin/qemu-img", "create", "-f", "qcow2", diskImage, "128G").Run()
 	if err != nil {
-		return fmt.Errorf("failed to create build temp image: %w", err)
+		return nil, fmt.Errorf("failed to create build temp image: %w", err)
 	}
 
 	qemuCmd := []string{
 		"/pkg/main/app-emulation.qemu.core/bin/" + qemuExe,
-		"-kernel", "/pkg/main/sys-kernel.linux.core." + kver + "." + e.os + "." + e.arch + "/linux-" + kver + ".img",
+		"-kernel", "/pkg/main/sys-kernel.linux.core." + kver + "." + tgtos + "." + arch + "/linux-" + kver + ".img",
 		"-initrd", initrd,
 		//"-append", "console=ttyS0",
 		//"-serial", "stdio", // exclusive with -nographic
@@ -160,7 +156,7 @@ func (e *buildEnv) initQemu() error {
 		"-device", "ich9-ahci,id=ahci",
 		"-device", "ide-hd,drive=build-format,id=disk0,bus=ahci.0",
 	}
-	switch e.arch {
+	switch arch {
 	case "amd64", "386":
 		qemuCmd = append(qemuCmd,
 			"--enable-kvm",
@@ -200,41 +196,17 @@ func (e *buildEnv) initQemu() error {
 			continue
 		}
 
-		e.backend = be
-		return nil
+		return be, nil
 	}
 }
 
-func shellQuoteEnv(env ...string) string {
-	cmd := &bytes.Buffer{}
-	for _, arg := range env {
-		p := strings.IndexByte(arg, '=')
-		if p == -1 {
-			continue
-		}
-		cmd.WriteString(arg[:p+1] + shellQuote(arg[p+1:]))
-		cmd.WriteByte(' ')
+func (e *buildEnv) initQemu() error {
+	be, err := NewQemuBackend(e.os, e.arch)
+	if err != nil {
+		return err
 	}
-	return cmd.String()
-}
-
-func shellQuoteCmd(args ...string) string {
-	cmd := &bytes.Buffer{}
-	for _, arg := range args {
-		if cmd.Len() > 0 {
-			cmd.WriteByte(' ')
-		}
-		cmd.WriteString(shellQuote(arg))
-	}
-	return cmd.String()
-}
-
-func shellQuote(s string) string {
-	if s == "" {
-		return "''"
-	}
-
-	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
+	e.backend = be
+	return nil
 }
 
 const initData = `#!/usr/azusa/busybox ash
@@ -302,7 +274,6 @@ ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/lib64 /lib64
 mv /lib /.lib.orig || true
 ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/lib /lib
 
-
 hash -r
 export PATH=/sbin:/bin
 
@@ -320,18 +291,25 @@ ln -snf /pkg/main/net-misc.openssh.core.linux.__ARCH__/libexec/sftp-server /usr/
 	fi
 done
 
+ln -snf /pkg/main/azusa.symlinks.core.linux.__ARCH__/etc/xml /etc/xml
+
 dbus-uuidgen --ensure=/etc/machine-id
 
 mkdir -p /build
 if [ -e /dev/vda ]; then
 	echo "Formatting build disk..."
-	mkfs.ext4 -f /dev/vda
+	mkfs.ext4 /dev/vda
 	mount -t ext4 /dev/vda /build
 elif [ -e /dev/sda ]; then
 	echo "Formatting build disk..."
-	mkfs.ext4 -f /dev/sda
+	mkfs.ext4 /dev/sda
 	mount -t ext4 /dev/sda /build
 fi
+
+# move apkg here (not nice but good enough for us)
+mkdir /build/apkg
+mv /var/lib/apkg/main /var/lib/apkg/main.old
+ln -snf /build/apkg /var/lib/apkg/main
 
 # disable ldconfig
 mkdir /build/bin
