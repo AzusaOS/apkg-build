@@ -84,6 +84,10 @@ func (e *buildEnv) archive() error {
 				return fmt.Errorf("while fetching from qemu: %w", err)
 			}
 		}
+		if e.backend.IsRoot() {
+			// copy to /var/lib/apkg/unsigned
+			e.run("cp", squash, filepath.Join("/var/lib/apkg/unsigned", filepath.Base(squash)))
+		}
 	}
 
 	return nil
