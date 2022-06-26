@@ -25,6 +25,7 @@ func (e *buildEnv) doImport() error {
 			vers = "." + s[p+1:]
 			s = s[:p]
 		}
+		vers = vers + "." + e.os + "." + e.arch
 
 		s = strings.ReplaceAll(s, "/", ".")
 		incDir := "/pkg/main/" + s + ".dev" + vers + "/include"

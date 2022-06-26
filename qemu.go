@@ -252,7 +252,7 @@ mkdir -p /var/lib/apkg
 mount -t tmpfs tmpfs /var/lib/apkg
 
 modprobe fuse
-/usr/azusa/apkg >/var/log/apkg.log 2>&1 &
+/usr/azusa/apkg -load_unsigned >/var/log/apkg.log 2>&1 &
 
 # wait for /pkg/main to be ready
 echo "Waiting..."

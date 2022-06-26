@@ -178,6 +178,7 @@ func (e *buildEnv) initVars() error {
 		"PV":        e.version,
 		"PVR":       e.pvr, // TODO add revision (or strip from PV)
 		"PVRF":      e.pvrf,
+		"PVF":       e.version + "." + e.os + "." + e.arch,
 		"PKG":       e.category + "." + e.name,
 		"WORKDIR":   e.workdir,
 		"D":         e.dist,
