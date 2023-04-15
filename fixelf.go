@@ -55,6 +55,8 @@ func (e *buildEnv) fixElf() error {
 			changeto = "/pkg/main/sys-libs.glibc.libs.linux.arm64/lib/ld-linux-aarch64.so.1"
 		case "/pkg/main/sys-libs.glibc.libs.linux.arm64/lib/ld-linux-aarch64.so.1":
 			// good
+		case "":
+			// static file
 		default:
 			log.Printf("Unknown interpreter: %s", interp)
 		}
