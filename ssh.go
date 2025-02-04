@@ -56,10 +56,14 @@ func NewSshBackend(s *ssh.Client) (Backend, error) {
 		id, err := strconv.ParseInt(strings.TrimSpace(string(idS)), 10, 64)
 		if err == nil {
 			b.uid = int(id)
+		} else {
+			log.Printf("ssh: failed to parse uid %s: %s", idS, err)
+			return nil, err
 		}
 	} else {
 		log.Printf("ssh: failed to get connected ID: %s", err)
 	}
+	log.Printf("ssh: running with uid=%d", b.uid)
 
 	return b, nil
 }

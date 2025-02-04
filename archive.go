@@ -10,7 +10,7 @@ import (
 
 func (e *buildEnv) archive() error {
 	infofile := filepath.Join(repoPath(), e.config.pkgname, "azusa.yaml")
-	if _, err := e.backend.Stat(infofile); err == nil {
+	if _, err := os.Stat(infofile); err == nil {
 		// there's a azusa.yaml file
 		tgt := filepath.Join(e.dist, e.getDir("core"))
 		e.backend.MkdirAll(tgt, 0755)
