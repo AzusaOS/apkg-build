@@ -74,7 +74,8 @@ func (p *pkg) base() string {
 func (p *pkg) readBuildConfig() (*buildConfig, error) {
 	f, err := os.Open(filepath.Join(p.base(), "build.yaml"))
 	if err != nil {
-		return nil, err
+		// No build.yaml, try to find .sh files
+		return p.readShellConfig()
 	}
 	defer f.Close()
 
@@ -116,6 +117,76 @@ func (p *pkg) readBuildConfig() (*buildConfig, error) {
 		return nil, err
 	}
 	bc.epoch = strings.TrimSpace(string(out))
+
+	return bc, nil
+}
+
+// readShellConfig reads .sh files from the package directory and creates a buildConfig
+func (p *pkg) readShellConfig() (*buildConfig, error) {
+	pkgName := filepath.Base(p.fn)
+	entries, err := os.ReadDir(p.base())
+	if err != nil {
+		return nil, err
+	}
+
+	var versions []string
+	shellScripts := make(map[string]string) // version -> script path
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".sh") {
+			continue
+		}
+		// Expected format: pkgname-version.sh (e.g., zlib-1.0.8.sh)
+		if !strings.HasPrefix(name, pkgName+"-") {
+			continue
+		}
+		// Extract version from filename
+		version := strings.TrimSuffix(strings.TrimPrefix(name, pkgName+"-"), ".sh")
+		if version != "" {
+			versions = append(versions, version)
+			shellScripts[version] = filepath.Join(p.base(), name)
+		}
+	}
+
+	if len(versions) == 0 {
+		return nil, os.ErrNotExist
+	}
+
+	// Sort versions (simple string sort, could be improved with semver)
+	// For now, just use natural order from ReadDir
+
+	bc := &buildConfig{
+		pkgname: p.fn,
+		Versions: &buildVersions{
+			List:   versions,
+			Stable: versions[len(versions)-1],
+		},
+		Build:        make([]*buildInstructions, 0),
+		meta:         &buildMeta{Files: make(map[string]*buildFile)},
+		shellScripts: shellScripts,
+	}
+
+	// Create a generic build instruction for shell scripts
+	bc.Build = append(bc.Build, &buildInstructions{
+		Version: "*",
+		Engine:  "shell",
+	})
+
+	// fetch last commit date for latest .sh file
+	latestScript := filepath.Base(shellScripts[versions[len(versions)-1]])
+	c := exec.Command("git", "log", "-1", "--pretty=%ct", latestScript)
+	c.Dir = p.base()
+	c.Stderr = os.Stderr
+	out, err := c.Output()
+	if err != nil {
+		// Use current time if git fails
+		bc.epoch = "0"
+	} else {
+		bc.epoch = strings.TrimSpace(string(out))
+	}
+
+	log.Printf("Found %d shell build scripts for %s", len(versions), p.fn)
 
 	return bc, nil
 }

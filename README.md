@@ -105,6 +105,56 @@ build:
     install_post: []
 ```
 
+## Shell Build Scripts
+
+For packages without a `build.yaml`, apkg-build supports legacy shell scripts. These are self-contained bash scripts that handle the entire build process.
+
+### Script Format
+
+Scripts are named `{package}-{version}.sh` (e.g., `zlib-1.0.8.sh`) and placed in the package directory:
+
+```
+category/package-name/
+├── zlib-1.0.8.sh
+├── zlib-1.2.13.sh
+└── files/
+    └── patches...
+```
+
+### Script Structure
+
+Shell scripts source `common/init.sh` which provides helper functions:
+
+```bash
+#!/bin/sh
+source "../../common/init.sh"
+
+get https://example.com/source.tar.gz    # Download and extract
+acheck                                     # Verify build environment
+
+cd "${T}"                                  # Change to temp build dir
+importpkg sys-libs/zlib                   # Import dependencies
+doconf --enable-shared                    # Run configure
+make -j${NPROC}                           # Build
+make install DESTDIR="${D}"               # Install
+
+finalize                                   # Run fixelf, organize, archive
+```
+
+### Available Functions
+
+| Function | Description |
+|----------|-------------|
+| `get URL [filename]` | Download and extract source |
+| `doconf [args]` | Run configure with standard paths |
+| `doconflight [args]` | Run configure with minimal paths |
+| `docmake [args]` | CMake build |
+| `domeson [args]` | Meson build |
+| `importpkg pkg...` | Import package dependencies |
+| `apatch file...` | Apply patches |
+| `aautoreconf` | Run autoreconf |
+| `finalize` | Run fixelf, organize, archive |
+
 ## Build Engines
 
 ### autoconf
