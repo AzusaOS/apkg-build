@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -89,11 +88,11 @@ func (b *localBackend) Symlink(oldname, newname string) error {
 }
 
 func (b *localBackend) ReadFile(p string) ([]byte, error) {
-	return ioutil.ReadFile(p)
+	return os.ReadFile(p)
 }
 
 func (b *localBackend) WriteFile(filename string, data []byte, perm fs.FileMode) error {
-	return ioutil.WriteFile(filename, data, perm)
+	return os.WriteFile(filename, data, perm)
 }
 
 func (b *localBackend) PutFile(src, tgt string) error {
@@ -139,4 +138,9 @@ func (b *localBackend) WalkDir(root string, fn fs.WalkDirFunc) error {
 
 func (b *localBackend) Dial(n, addr string) (net.Conn, error) {
 	return net.Dial(n, addr)
+}
+
+func (b *localBackend) Close() error {
+	// Local backend has no resources to clean up
+	return nil
 }

@@ -1,5 +1,9 @@
 package main
 
+import (
+	"mvdan.cc/sh/v3/shell"
+)
+
 func (e *buildEnv) buildMeson() error {
 	// build custom rules (gentoo inspired)
 
@@ -13,7 +17,19 @@ func (e *buildEnv) buildMeson() error {
 		"meson",
 		mesonRoot,
 		"--prefix=" + e.getDir("core"),
+		"--libdir=" + e.getDir("libs") + "/lib" + e.libsuffix,
+		"--includedir=" + e.getDir("dev") + "/include",
+		"--mandir=" + e.getDir("doc") + "/man",
 		"-Dbuildtype=release",
+	}
+
+	// Process custom arguments from build.yaml
+	for _, arg := range e.i.Arguments {
+		arg, err := shell.Expand(arg, e.getVar)
+		if err != nil {
+			return err
+		}
+		mesonOpts = append(mesonOpts, arg)
 	}
 
 	buildDir := e.temp

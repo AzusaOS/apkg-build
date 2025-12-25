@@ -370,3 +370,13 @@ func (s statThing) Type() fs.FileMode {
 func (b *sshBackend) Dial(n, addr string) (net.Conn, error) {
 	return b.ssh.Dial(n, addr)
 }
+
+func (b *sshBackend) Close() error {
+	if b.sftp != nil {
+		b.sftp.Close()
+	}
+	if b.ssh != nil {
+		b.ssh.Close()
+	}
+	return nil
+}

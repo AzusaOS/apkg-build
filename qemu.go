@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -55,7 +54,7 @@ func NewQemuBackend(tgtos, arch string) (Backend, error) {
 	}
 
 	// launch qemu... first we need to find out kernel version
-	kverB, err := ioutil.ReadFile("/pkg/main/sys-kernel.linux.core." + tgtos + "." + arch + "/version.txt")
+	kverB, err := os.ReadFile("/pkg/main/sys-kernel.linux.core." + tgtos + "." + arch + "/version.txt")
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +91,7 @@ func NewQemuBackend(tgtos, arch string) (Backend, error) {
 			return nil, err
 		}
 		str := strings.ReplaceAll(initData, "__ARCH__", arch)
-		err = ioutil.WriteFile("/tmp/init", []byte(str), 0755)
+		err = os.WriteFile("/tmp/init", []byte(str), 0755)
 		if err != nil {
 			return nil, err
 		}
@@ -179,25 +178,37 @@ func NewQemuBackend(tgtos, arch string) (Backend, error) {
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 
-	c.Start()
+	if err := c.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start QEMU: %w", err)
+	}
 
 	// let's try to connect to this port
 	log.Printf("Waiting for qemu to finish loading...")
 
-	for {
+	const maxRetries = 60 // 2 minutes max wait time
+	for i := 0; i < maxRetries; i++ {
 		sshc, err = ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), cfg)
 		if err != nil {
+			// Check if QEMU process is still running
+			if c.ProcessState != nil && c.ProcessState.Exited() {
+				return nil, fmt.Errorf("QEMU process exited unexpectedly")
+			}
 			time.Sleep(2 * time.Second)
 			continue
 		}
 		be, err := NewSshBackend(sshc)
 		if err != nil {
+			sshc.Close()
 			time.Sleep(2 * time.Second)
 			continue
 		}
 
 		return be, nil
 	}
+
+	// Timeout reached, kill QEMU
+	c.Process.Kill()
+	return nil, fmt.Errorf("timeout waiting for QEMU to become ready after %d seconds", maxRetries*2)
 }
 
 func (e *buildEnv) initQemu() error {

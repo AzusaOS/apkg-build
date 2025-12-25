@@ -36,7 +36,7 @@ func (e *buildEnv) archive() error {
 		}
 		if st.Mode().IsDir() {
 			// append without e.dist
-			fmt.Fprintf(buf, "%s\n", filepath.Join(e.getDir("libs"), "lib"+e.libsuffix, sub))
+			fmt.Fprintf(buf, "%s\n", filepath.Join(e.getDir("libs"), sub))
 		}
 	}
 

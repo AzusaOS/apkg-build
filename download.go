@@ -107,7 +107,9 @@ func (e *buildEnv) download() error {
 			c := exec.Command("aws", "s3", "cp", tgt, "s3://azusa-pkg/src/main/"+e.category+"/"+e.name+"/"+fn)
 			c.Stdout = os.Stdout
 			c.Stderr = os.Stderr
-			c.Run()
+			if err := c.Run(); err != nil {
+				log.Printf("Warning: failed to upload to S3 cache: %s", err)
+			}
 		}
 
 		// copy file to work
@@ -171,10 +173,10 @@ func doDownload(tgt string, srcurl string) error {
 	}
 	// open out file
 	out, err := os.Create(tgt + "~")
-	defer out.Close()
 	if err != nil {
 		return err
 	}
+	defer out.Close()
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		return err

@@ -36,7 +36,7 @@ func loadPackage(name string) *pkg {
 		var found []string
 		for _, op := range opts {
 			catnam := op.Name()
-			if strings.HasPrefix(name, ".") {
+			if strings.HasPrefix(catnam, ".") {
 				continue
 			}
 			j := filepath.Join(repoPath(), catnam, name)
@@ -88,10 +88,10 @@ func (p *pkg) readBuildConfig() (*buildConfig, error) {
 	}
 
 	// read meta
-	f, err = os.Open(filepath.Join(p.base(), "metadata.yaml"))
+	metaFile, err := os.Open(filepath.Join(p.base(), "metadata.yaml"))
 	if err == nil {
-		defer f.Close()
-		dec = yaml.NewDecoder(f)
+		defer metaFile.Close()
+		dec = yaml.NewDecoder(metaFile)
 		dec.KnownFields(true)
 
 		err = dec.Decode(&bc.meta)
@@ -130,17 +130,27 @@ func (p *pkg) build() {
 		os.Exit(1)
 	}
 
+	// determine version to build
+	version := *buildVersion
+	if version == "" {
+		if c.Versions == nil || len(c.Versions.List) == 0 {
+			log.Printf("No versions defined for %s", p.fn)
+			os.Exit(1)
+		}
+		version = c.Versions.Latest()
+	}
+
 	e := &buildEnv{
 		pkg:     p,
 		config:  c,
-		version: c.Versions.Latest(),
+		version: version,
 		os:      runtime.GOOS,
 		arch:    *buildArch,
 	}
-	if *buildVersion != "" {
-		e.version = *buildVersion
+	if err := e.initVars(); err != nil {
+		log.Printf("Failed to initialize build environment: %s", err)
+		os.Exit(1)
 	}
-	e.initVars()
 
 	// let's check versions unless forced
 	err = e.build(p)

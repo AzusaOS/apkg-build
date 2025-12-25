@@ -25,18 +25,19 @@ func cloneFile(src, tgt string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
 
 	_, err = io.Copy(out, f)
 	if err != nil {
+		out.Close()
+		os.Remove(tgt) // Clean up partially written file
 		return err
 	}
 
 	if st, err := f.Stat(); err == nil {
-		os.Chmod(tgt, st.Mode())
+		out.Chmod(st.Mode())
 	}
 
-	return nil
+	return out.Close()
 }
 
 func quickMatch(pattern, f string) bool {

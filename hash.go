@@ -38,6 +38,7 @@ func hashFile(fn string) map[string]string {
 	_, err = io.Copy(io.MultiWriter(wr...), f)
 	if err != nil {
 		log.Printf("failed to read %s: %s", fn, err)
+		return nil
 	}
 
 	res := make(map[string]string)

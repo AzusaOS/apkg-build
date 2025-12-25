@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
+	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -90,6 +90,9 @@ func (bv *buildVersions) Versions() []string {
 
 func (bv *buildVersions) Latest() string {
 	// return last version
+	if len(bv.List) == 0 {
+		return ""
+	}
 	return bv.List[len(bv.List)-1]
 }
 
@@ -120,7 +123,7 @@ func (bv *buildConfig) Save() error {
 	}
 
 	for fn, data := range data {
-		err = ioutil.WriteFile(filepath.Join(repoPath(), bv.pkgname, fn), data, 0644)
+		err = os.WriteFile(filepath.Join(repoPath(), bv.pkgname, fn), data, 0644)
 		if err != nil {
 			return err
 		}
@@ -317,6 +320,7 @@ func (e *buildEnv) build(p *pkg) error {
 		return err
 	}
 	e.cleanup()
+	e.backend.Close()
 
 	return nil
 }

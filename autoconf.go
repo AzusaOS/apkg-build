@@ -21,7 +21,7 @@ func (e *buildEnv) buildAutoconf() error {
 	}
 
 	// ensure we have up to date config.sub & config.guess
-	flist := findFiles(e.workdir, "config.sub", "config.guess")
+	flist := e.backend.FindFiles(e.workdir, "config.sub", "config.guess")
 	for _, f := range flist {
 		log.Printf("upgrading %s", f)
 		e.run("cp", "-f", filepath.Join("/pkg/main/sys-devel.gnuconfig.core/share/gnuconfig", filepath.Base(f)), filepath.Join(e.workdir, f))
