@@ -335,6 +335,33 @@ echo "Running dropbear..."
 mkdir /etc/dropbear
 dropbear -E -B -R
 
+# Initialize activity timestamp
+touch /var/run/last_activity
+
+# Idle timeout watchdog (1 hour = 3600 seconds)
+(
+	IDLE_TIMEOUT=3600
+	while true; do
+		sleep 60
+		# Check for active SSH sessions (dropbear children)
+		if pgrep -P $(pgrep -x dropbear | head -1) >/dev/null 2>&1; then
+			# Active session, update timestamp
+			touch /var/run/last_activity
+		else
+			# No active session, check how long we've been idle
+			if [ -f /var/run/last_activity ]; then
+				last_activity=$(stat -c %Y /var/run/last_activity)
+				now=$(date +%s)
+				idle_time=$((now - last_activity))
+				if [ $idle_time -ge $IDLE_TIMEOUT ]; then
+					echo "Idle timeout reached ($idle_time seconds), shutting down..."
+					poweroff -f
+				fi
+			fi
+		fi
+	done
+) &
+
 /bin/bash -i || ash -i
 poweroff -f
 `
