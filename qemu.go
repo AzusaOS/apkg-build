@@ -154,6 +154,7 @@ func NewQemuBackend(tgtos, arch string) (Backend, error) {
 		"-blockdev", `{"node-name":"build-format","read-only":false,"driver":"qcow2","file":"build-storage"}`,
 		"-device", "ich9-ahci,id=ahci",
 		"-device", "ide-hd,drive=build-format,id=disk0,bus=ahci.0",
+		"-device", "virtio-balloon",
 	}
 	switch arch {
 	case "amd64", "386":
@@ -161,7 +162,7 @@ func NewQemuBackend(tgtos, arch string) (Backend, error) {
 			"--enable-kvm",
 			"-cpu", "host",
 			"-smp", strconv.Itoa(runtime.NumCPU()),
-			"-m", "8192",
+			"-m", "16384,slots=2,maxmem=32G",
 		)
 	case "arm64":
 		qemuCmd = append(qemuCmd,
@@ -169,7 +170,7 @@ func NewQemuBackend(tgtos, arch string) (Backend, error) {
 			"-smp", "4",
 			//"-serial", "stdio",
 			//"-append", "console=ttyS0",
-			"-m", "2048",
+			"-m", "4096,slots=2,maxmem=16G",
 		)
 	}
 
