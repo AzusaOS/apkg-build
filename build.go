@@ -65,13 +65,12 @@ type buildInstructions struct {
 }
 
 type buildConfig struct {
-	pkgname      string
-	epoch        string // unix timestamp of last commit of file
-	meta         *buildMeta
-	shellScripts map[string]string     // version -> script path (for .sh based builds)
-	Versions     *buildVersions        `yaml:"versions"`
-	Build        []*buildInstructions  `yaml:"build"`
-	Files        map[string]*buildFile `yaml:"files,omitempty"`
+	pkgname  string
+	epoch    string // unix timestamp of last commit of file
+	meta     *buildMeta
+	Versions *buildVersions        `yaml:"versions"`
+	Build    []*buildInstructions  `yaml:"build"`
+	Files    map[string]*buildFile `yaml:"files,omitempty"`
 }
 
 type buildMeta struct {
@@ -174,6 +173,10 @@ func (e *buildEnv) initVars() error {
 
 	log.Printf("Using %s as build directory", e.base)
 
+	// Build PATH with azusa symlinks
+	azusaPath := "/pkg/main/azusa.symlinks.core." + e.os + "." + e.arch + "/bin"
+	defaultPath := "/build/bin:" + azusaPath + ":/usr/sbin:/usr/bin:/sbin:/bin"
+
 	e.vars = map[string]string{
 		"P":         e.name + "-" + e.version,
 		"PN":        e.name,                   // zlib
@@ -193,6 +196,7 @@ func (e *buildEnv) initVars() error {
 		"BITS":      strconv.FormatInt(int64(e.bits), 10),
 		"FILESDIR":  filepath.Join(repoPath(), e.config.pkgname, "files"),
 		"LIBSUFFIX": e.libsuffix,
+		"PATH":      defaultPath,
 
 		// default stuff
 		"PKG_CONFIG_LIBDIR": "/pkg/main/azusa.symlinks.core/pkgconfig",
@@ -248,11 +252,6 @@ func (e *buildEnv) build(p *pkg) error {
 		e.i = &buildInstructions{Engine: "auto"}
 	}
 	log.Printf("building version %s of %s using %s", e.version, p.fn, e.i.Engine)
-
-	// Shell engine is special - it handles everything itself
-	if e.i.Engine == "shell" {
-		return e.buildShell()
-	}
 
 	if err := e.initDir(); err != nil {
 		return err
@@ -334,7 +333,7 @@ func (e *buildEnv) build(p *pkg) error {
 func (e *buildEnv) fullEnv() []string {
 	var env []string
 
-	env = append(env, "HOSTNAME=localhost", "HOME="+e.base, "PATH=/build/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+	env = append(env, "HOSTNAME=localhost", "HOME="+e.base)
 	for k, v := range e.vars {
 		env = append(env, k+"="+v)
 	}

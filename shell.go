@@ -7,13 +7,13 @@ import (
 
 func shellQuoteEnv(env ...string) string {
 	cmd := &bytes.Buffer{}
+	cmd.WriteString("env ")
 	for _, arg := range env {
 		p := strings.IndexByte(arg, '=')
 		if p == -1 {
 			continue
 		}
-		cmd.WriteString(arg[:p+1] + shellQuote(arg[p+1:]))
-		cmd.WriteByte(' ')
+		cmd.WriteString(arg[:p+1] + shellQuote(arg[p+1:]) + " ")
 	}
 	return cmd.String()
 }

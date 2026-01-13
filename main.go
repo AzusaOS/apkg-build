@@ -35,6 +35,22 @@ func main() {
 			os.Exit(1)
 		}
 		pkg.build()
+	case "convert":
+		if len(args) == 1 {
+			// Convert all packages
+			limit := 0 // no limit
+			if err := convertAllPackages(repoPath(), limit); err != nil {
+				log.Printf("Conversion failed: %s", err)
+				os.Exit(1)
+			}
+		} else {
+			// Convert a specific package
+			pkgPath := args[1]
+			if err := convertPackage(pkgPath); err != nil {
+				log.Printf("Conversion failed: %s", err)
+				os.Exit(1)
+			}
+		}
 	default:
 		log.Printf("args = %v", os.Args)
 	}

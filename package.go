@@ -122,6 +122,7 @@ func (p *pkg) readBuildConfig() (*buildConfig, error) {
 }
 
 // readShellConfig reads .sh files from the package directory and creates a buildConfig
+// by parsing the shell scripts and converting them to build instructions
 func (p *pkg) readShellConfig() (*buildConfig, error) {
 	pkgName := filepath.Base(p.fn)
 	entries, err := os.ReadDir(p.base())
@@ -129,8 +130,8 @@ func (p *pkg) readShellConfig() (*buildConfig, error) {
 		return nil, err
 	}
 
+	var scripts []*ShellScript
 	var versions []string
-	shellScripts := make(map[string]string) // version -> script path
 
 	for _, entry := range entries {
 		name := entry.Name()
@@ -141,20 +142,20 @@ func (p *pkg) readShellConfig() (*buildConfig, error) {
 		if !strings.HasPrefix(name, pkgName+"-") {
 			continue
 		}
-		// Extract version from filename
-		version := strings.TrimSuffix(strings.TrimPrefix(name, pkgName+"-"), ".sh")
-		if version != "" {
-			versions = append(versions, version)
-			shellScripts[version] = filepath.Join(p.base(), name)
+
+		scriptPath := filepath.Join(p.base(), name)
+		script, err := parseShellScript(scriptPath)
+		if err != nil {
+			log.Printf("Warning: failed to parse %s: %v", scriptPath, err)
+			continue
 		}
+		scripts = append(scripts, script)
+		versions = append(versions, script.Version)
 	}
 
-	if len(versions) == 0 {
+	if len(scripts) == 0 {
 		return nil, os.ErrNotExist
 	}
-
-	// Sort versions (simple string sort, could be improved with semver)
-	// For now, just use natural order from ReadDir
 
 	bc := &buildConfig{
 		pkgname: p.fn,
@@ -162,19 +163,38 @@ func (p *pkg) readShellConfig() (*buildConfig, error) {
 			List:   versions,
 			Stable: versions[len(versions)-1],
 		},
-		Build:        make([]*buildInstructions, 0),
-		meta:         &buildMeta{Files: make(map[string]*buildFile)},
-		shellScripts: shellScripts,
+		Build: make([]*buildInstructions, 0),
+		meta:  &buildMeta{Files: make(map[string]*buildFile)},
 	}
 
-	// Create a generic build instruction for shell scripts
-	bc.Build = append(bc.Build, &buildInstructions{
-		Version: "*",
-		Engine:  "shell",
-	})
+	// Convert each parsed shell script to build instructions
+	for _, script := range scripts {
+		bi := &buildInstructions{
+			Version:   script.Version,
+			Engine:    script.Engine,
+			Options:   script.Options,
+			Arguments: script.Arguments,
+			Import:    script.Import,
+			Patches:   script.Patches,
+			Env:       script.Env,
+		}
+		if script.SourceURL != "" {
+			bi.Source = []string{script.SourceURL}
+		}
+		if len(script.ConfigurePre) > 0 {
+			bi.ConfigurePre = script.ConfigurePre
+		}
+		if len(script.CompilePre) > 0 {
+			bi.CompilePre = script.CompilePre
+		}
+		if len(script.InstallPost) > 0 {
+			bi.InstallPost = script.InstallPost
+		}
+		bc.Build = append(bc.Build, bi)
+	}
 
 	// fetch last commit date for latest .sh file
-	latestScript := filepath.Base(shellScripts[versions[len(versions)-1]])
+	latestScript := pkgName + "-" + versions[len(versions)-1] + ".sh"
 	c := exec.Command("git", "log", "-1", "--pretty=%ct", latestScript)
 	c.Dir = p.base()
 	c.Stderr = os.Stderr
@@ -186,7 +206,7 @@ func (p *pkg) readShellConfig() (*buildConfig, error) {
 		bc.epoch = strings.TrimSpace(string(out))
 	}
 
-	log.Printf("Found %d shell build scripts for %s", len(versions), p.fn)
+	log.Printf("Converted %d shell build scripts for %s", len(scripts), p.fn)
 
 	return bc, nil
 }
