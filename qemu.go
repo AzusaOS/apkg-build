@@ -155,6 +155,7 @@ func NewQemuBackend(tgtos, arch string) (Backend, error) {
 		"-device", "ich9-ahci,id=ahci",
 		"-device", "ide-hd,drive=build-format,id=disk0,bus=ahci.0",
 		"-device", "virtio-balloon",
+		"-display", "none",
 	}
 	switch arch {
 	case "amd64", "386":
@@ -183,17 +184,25 @@ func NewQemuBackend(tgtos, arch string) (Backend, error) {
 		return nil, fmt.Errorf("failed to start QEMU: %w", err)
 	}
 
+	// Monitor for early exit
+	qemuDone := make(chan error, 1)
+	go func() {
+		qemuDone <- c.Wait()
+	}()
+
 	// let's try to connect to this port
 	log.Printf("Waiting for qemu to finish loading...")
 
 	const maxRetries = 60 // 2 minutes max wait time
 	for i := 0; i < maxRetries; i++ {
+		select {
+		case err := <-qemuDone:
+			return nil, fmt.Errorf("QEMU exited unexpectedly: %w", err)
+		default:
+		}
+
 		sshc, err = ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), cfg)
 		if err != nil {
-			// Check if QEMU process is still running
-			if c.ProcessState != nil && c.ProcessState.Exited() {
-				return nil, fmt.Errorf("QEMU process exited unexpectedly")
-			}
 			time.Sleep(2 * time.Second)
 			continue
 		}

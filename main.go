@@ -51,6 +51,8 @@ func main() {
 				os.Exit(1)
 			}
 		}
+	case "outdated":
+		runOutdated(args[1:])
 	default:
 		log.Printf("args = %v", os.Args)
 	}

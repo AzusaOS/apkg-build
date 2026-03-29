@@ -19,7 +19,18 @@ import (
 func (e *buildEnv) download() error {
 	cacheDir := "/tmp/apkg-data"
 
-	for _, u := range e.i.Source {
+	// Collect all source URLs: static sources + dynamically generated ones
+	sources := append([]string{}, e.i.Source...)
+
+	for _, script := range e.i.SourceScript {
+		extra, err := e.runSourceScript(script)
+		if err != nil {
+			return fmt.Errorf("source_script failed: %w", err)
+		}
+		sources = append(sources, extra...)
+	}
+
+	for _, u := range sources {
 		// TODO need to find a way to specify a different name for saved file, for example gentoo's " -> "
 		u, err := shell.Expand(u, e.getVar)
 		if err != nil {
@@ -158,6 +169,28 @@ func (e *buildEnv) download() error {
 	}
 
 	return nil
+}
+
+// runSourceScript runs a shell script locally with build env vars and returns
+// the non-empty lines from stdout as additional source URLs.
+func (e *buildEnv) runSourceScript(script string) ([]string, error) {
+	cmd := exec.Command("/bin/bash", "-c", script)
+	cmd.Env = e.fullEnv()
+	cmd.Stderr = os.Stderr
+
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	var urls []string
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			urls = append(urls, line)
+		}
+	}
+	return urls, nil
 }
 
 func doDownload(tgt string, srcurl string) error {

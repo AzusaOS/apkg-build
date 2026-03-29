@@ -47,14 +47,15 @@ type buildVersions struct {
 }
 
 type buildInstructions struct {
-	Version   string   `yaml:"version"`
-	Env       []string `yaml:"env,omitempty"`     // environment variables (using an array because order is important)
-	Import    []string `yaml:"import,omitempty"`  // list of imports
-	Source    []string `yaml:"source"`            // url of source (if multiple files, multiple urls)
-	Patches   []string `yaml:"patches,omitempty"` // patches to apply to source
-	Engine    string   `yaml:"engine,omitempty"`  // build engine
-	Options   []string `yaml:"options,flow,omitempty"`
-	Arguments []string `yaml:"arguments,omitempty"` // extra arguments
+	Version      string   `yaml:"version"`
+	Env          []string `yaml:"env,omitempty"`           // environment variables (using an array because order is important)
+	Import       []string `yaml:"import,omitempty"`        // list of imports
+	Source       []string `yaml:"source"`                  // url of source (if multiple files, multiple urls)
+	SourceScript []string `yaml:"source_script,omitempty"` // shell commands that output additional source URLs to stdout
+	Patches      []string `yaml:"patches,omitempty"`       // patches to apply to source
+	Engine       string   `yaml:"engine,omitempty"`        // build engine
+	Options      []string `yaml:"options,flow,omitempty"`
+	Arguments    []string `yaml:"arguments,omitempty"` // extra arguments
 
 	ConfigurePre  []string `yaml:"configure_pre,omitempty"`
 	ConfigurePost []string `yaml:"configure_post,omitempty"`
