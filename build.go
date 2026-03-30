@@ -63,6 +63,9 @@ type buildInstructions struct {
 	CompilePost   []string `yaml:"compile_post,omitempty"`
 	InstallPre    []string `yaml:"install_pre,omitempty"`
 	InstallPost   []string `yaml:"install_post,omitempty"`
+
+	ArchiveLoad bool     `yaml:"archive_load,omitempty"` // trigger mid-build archive+load into VM
+	PostLoad    []string `yaml:"post_load,omitempty"`    // commands to run after archive+load
 }
 
 type buildConfig struct {
@@ -258,6 +261,7 @@ func (e *buildEnv) build(p *pkg) error {
 		return err
 	}
 
+	e.applyConditionals()
 	e.applyEnv()
 
 	err := e.download()
@@ -316,15 +320,36 @@ func (e *buildEnv) build(p *pkg) error {
 	}
 
 	// finalize process: fixelf, organize, archive
+	opts := make(map[string]bool)
+	for _, opt := range e.i.Options {
+		opts[opt] = true
+	}
+
 	if err := e.fixElf(); err != nil {
 		return err
 	}
-	if err := e.organize(); err != nil {
-		return err
+	if !opts["no_organize"] {
+		if err := e.organize(); err != nil {
+			return err
+		}
 	}
 	if err := e.archive(); err != nil {
 		return err
 	}
+
+	if e.i.ArchiveLoad {
+		if err := e.loadArchive(); err != nil {
+			return err
+		}
+		if err := e.runManyIn(e.src, e.i.PostLoad); err != nil {
+			return err
+		}
+		// re-archive to capture changes from post_load commands
+		if err := e.archive(); err != nil {
+			return err
+		}
+	}
+
 	e.cleanup()
 	e.backend.Close()
 
